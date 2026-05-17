@@ -34,17 +34,17 @@ def save_portfolio(portfolio: dict):
         with open(PORTFOLIO_FILE, "w") as f:
             json.dump(portfolio, f, indent=4)
     except Exception as e:
-        print(f"[PAPER TRADER] Gagal menyimpan portofolio: {e}")
+        print(f"[ERROR] Gagal menyimpan portofolio: {e}")
 
 def run_live_paper_trader():
     portfolio = load_portfolio()
     
     print("=" * 80)
-    print("🤖 SOLANA DEX PREDATOR - LIVE PAPER TRADING ENGINE (PRODUCTION V4)")
-    print(f"💰 Virtual Wallet Balance: ${portfolio['wallet_balance']:.2f}")
-    print("💼 Max Active Trades     : 2 Concurrent Positions Limit")
-    print("🛡️ Compounding Margin     : 30% of Current Wallet Capital Per Trade")
-    print("📈 Stop Loss Strategy    : 20% Trailing Stop Loss (No Ceiling!)")
+    print("[SYSTEM] SOLANA DEX PREDATOR - LIVE PAPER TRADING ENGINE (PRODUCTION V5)")
+    print(f"[INFO] Virtual Wallet Balance: ${portfolio['wallet_balance']:.2f}")
+    print("[INFO] Max Active Trades     : 2 Concurrent Positions Limit")
+    print("[INFO] Compounding Margin     : 30% of Current Wallet Capital Per Trade")
+    print("[INFO] Stop Loss Strategy    : 20% Trailing Stop Loss (No Ceiling!)")
     print("=" * 80)
     
     trailing_sl_pct = 0.20 # 20% Trailing SL
@@ -57,7 +57,7 @@ def run_live_paper_trader():
     while True:
         try:
             print("\n" + "-" * 80)
-            print(f"⏰ [SCAN CYCLE] {time.strftime('%Y-%m-%d %H:%M:%S')} | Mengaudit pasar live...")
+            print(f"[SCAN CYCLE] {time.strftime('%Y-%m-%d %H:%M:%S')} | Mengaudit pasar live...")
             print("-" * 80)
             
             # --- PHASE 1: UPDATE LIVE ACTIVE POSITIONS ---
@@ -65,15 +65,15 @@ def run_live_paper_trader():
             closed_any = False
             
             if active_positions:
-                print(f"💼 Memantau {len(active_positions)} posisi aktif secara live...")
+                print(f"[INFO] Memantau {len(active_positions)} posisi aktif secara live...")
                 try:
-                    # Production Fix 1: Bulk API Query to prevent rate limiting (429)
+                    # Bulk API Query to prevent rate limiting (429)
                     addr_list = list(active_positions.keys())
                     addr_str = ",".join(addr_list)
                     url = f"https://api.dexscreener.com/latest/dex/tokens/{addr_str}"
                     
                     r = requests.get(url, timeout=5)
-                    # Production Fix 2: HTTP status validation and safe JSON parsing
+                    # HTTP status validation and safe JSON parsing
                     if r.status_code == 200:
                         res = r.json()
                         pairs = res.get("pairs", []) or []
@@ -99,15 +99,15 @@ def run_live_paper_trader():
                                 sl_price = highest_price * (1 - trailing_sl_pct)
                                 current_pnl_pct = ((current_price - entry_price) / entry_price) * 100
                                 
-                                print(f"  🔹 {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | Puncak: ${highest_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}%")
+                                print(f"  [POSITION] {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | Puncak: ${highest_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}%")
                                 
                                 # Trigger Trailing Stop Loss
                                 if current_price <= sl_price:
                                     net_exit_value = pos["qty"] * current_price
                                     pnl_usd = net_exit_value - pos["net_investment"]
                                     
-                                    print(f"  🔴 [EXIT TRIGGERED] Trailing SL Terpicu untuk {pos['symbol']}!")
-                                    print(f"     👉 Harga Jual: ${current_price:.8f} | Realized PnL: {current_pnl_pct:+.2f}% (${pnl_usd:+.2f})")
+                                    print(f"  [EXIT TRIGGERED] Trailing SL Terpicu untuk {pos['symbol']}!")
+                                    print(f"     => Harga Jual: ${current_price:.8f} | Realized PnL: {current_pnl_pct:+.2f}% (${pnl_usd:+.2f})")
                                     
                                     portfolio["wallet_balance"] += net_exit_value
                                     portfolio["trade_history"].append({
@@ -122,18 +122,18 @@ def run_live_paper_trader():
                                     del active_positions[addr]
                                     closed_any = True
                             else:
-                                print(f"  ⚠️ Token {pos['symbol']} tidak ditemukan harganya pada API update ini.")
+                                print(f"  [WARN] Token {pos['symbol']} tidak ditemukan harganya pada API update ini.")
                     else:
-                        print(f"  ⚠️ DexScreener API mengembalikan error HTTP: {r.status_code}")
+                        print(f"  [WARN] DexScreener API mengembalikan error HTTP: {r.status_code}")
                 except Exception as e:
-                    print(f"  ⚠️ Gagal melakukan bulk update harga: {e}")
+                    print(f"  [WARN] Gagal melakukan bulk update harga: {e}")
             else:
-                print("💼 Portofolio Posisi Aktif: KOSONG.")
+                print("[INFO] Portofolio Posisi Aktif: KOSONG.")
                 
             # --- PHASE 2: SCAN FOR NEW PREMIUM OPPORTUNITIES ---
             # Strict limit check: Max 2 active trades
             if len(active_positions) >= 2:
-                print(f"⏳ [SCAN SKIPPED] Batas maksimum 2 posisi aktif terisi ({len(active_positions)}/2). Mengabaikan pembelian koin baru.")
+                print(f"[SCAN] Limit 2 posisi aktif terisi ({len(active_positions)}/2). Mengabaikan scan koin baru.")
             else:
                 candidates = _fetch_candidates()
                 if candidates:
@@ -151,7 +151,7 @@ def run_live_paper_trader():
                         security = check_token_security(gem["chain"], addr)
                         score = calculate_gem_score(gem, security)
                         
-                        print(f"  🔍 Analisis {gem['symbol']} | Safety: {security['status']} | Predator Score: {score}/100")
+                        print(f"  [SCAN] Analisis {gem['symbol']} | Safety: {security['status']} | Score: {score}/100")
                         
                         if security["status"] in ["CLEAN & SAFE", "WARNINGS"] and score >= 80:
                             if score > best_score:
@@ -170,7 +170,7 @@ def run_live_paper_trader():
                             cost_per_trade = gas_fee + (trade_allocation * swap_fee_pct) + (trade_allocation * slippage_pct)
                             net_investment = trade_allocation - cost_per_trade
                             
-                            # Production Fix 4: Deduct 2% virtual slippage compensation for realistic metrics
+                            # Deduct 2% virtual slippage compensation for realistic metrics
                             qty = (net_investment / best_candidate["price"]) * 0.98
                             
                             # Add new position
@@ -187,18 +187,18 @@ def run_live_paper_trader():
                             portfolio["wallet_balance"] -= trade_allocation
                             closed_any = True
                             
-                            print(f"\n🎯 [AUTO BUY EXECUTED] Membeli {best_candidate['symbol']}!")
-                            print(f"   👉 Harga Entry: ${best_candidate['price']:.8f} | Alokasi (30%): ${trade_allocation:.2f} (Net: ${net_investment:.2f})")
-                            print(f"   👉 Predator Score: {best_candidate['predator_score']}/100 | Initial SL: ${best_candidate['price']*(1-trailing_sl_pct):.8f}")
+                            print(f"\n[BUY EXECUTED] Membeli {best_candidate['symbol']}!")
+                            print(f"   => Harga Entry: ${best_candidate['price']:.8f} | Alokasi (30%): ${trade_allocation:.2f} (Net: ${net_investment:.2f})")
+                            print(f"   => Score: {best_candidate['predator_score']}/100 | Initial SL: ${best_candidate['price']*(1-trailing_sl_pct):.8f}")
                         else:
-                            print(f"\n🚨 [BUY SKIPPED] Dana tidak cukup untuk membeli {best_candidate['symbol']}. Saldo: ${portfolio['wallet_balance']:.2f}")
+                            print(f"\n[SCAN] Dana tidak cukup untuk membeli {best_candidate['symbol']}. Saldo: ${portfolio['wallet_balance']:.2f}")
             
             if closed_any:
                 save_portfolio(portfolio)
-                print(f"\n💰 Portofolio Diperbarui! Total Saldo Dompet Virtual: ${portfolio['wallet_balance']:.2f}")
+                print(f"\n[PORTFOLIO] Portofolio Diperbarui! Total Saldo Dompet Virtual: ${portfolio['wallet_balance']:.2f}")
                 
         except Exception as e:
-            print(f"[PAPER TRADER ERROR] Loop error: {e}")
+            print(f"[ERROR] Loop error: {e}")
             
         # Refresh every 60 seconds
         time.sleep(60)
