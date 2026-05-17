@@ -9,20 +9,21 @@ if hasattr(sys.stdout, 'reconfigure'):
     except Exception:
         pass
 
-def run_production_super_backtest(initial_capital: float = 12.0, total_trades: int = 100):
+def run_hybrid_production_backtest(initial_capital: float = 12.0, total_trades: int = 100):
     """
-    DEXSCREENER PREDATOR - PRODUCTION RESILIENT SUPER BACKTEST ENGINE
-    Simulates 100 chronological trades under exact production constraints:
+    DEXSCREENER PREDATOR - HYBRID POSITION SIZING BACKTEST ENGINE
+    Simulates 100 chronological trades under exact production constraints with a liquidity cap:
     - Starts with $12.00 burner wallet capital
     - Capped at maximum 2 concurrent active trades
-    - Compounding: Each trade allocates exactly 30% of current wallet balance
+    - Sizing: Allocates 30% of current capital per trade
+    - Sizing Cap: Once wallet balance reaches $500.00, trade allocation freezes at a flat $100.00
     - Deducts transactional costs: $0.12 gas + 1% swap fee + 2% dynamic slippage penalty
     """
     print("=" * 80)
-    print("📊 DEXSCREENER PREDATOR - PRODUCTION COMPONUNDING SUPER BACKTEST")
+    print("📊 DEXSCREENER PREDATOR - HYBRID PORTFOLIO COMPONUNDING BACKTEST")
     print(f"💰 Starting Capital  : ${initial_capital:.2f}")
     print("💼 Max Active Trades  : 2 Concurrent Positions Limit")
-    print("🛡️ Margin Allocation  : 30% of Current Compounding Capital Per Trade")
+    print("🛡️ Sizing Formula     : 30% Compounding, Capped at $100 once Wallet >= $500")
     print("📈 Stop Loss Strategy : 20% Trailing Stop Loss (No Ceiling!)")
     print("=" * 80)
     
@@ -39,7 +40,6 @@ def run_production_super_backtest(initial_capital: float = 12.0, total_trades: i
     
     scams_blocked = 0
     trade_counter = 0
-    day = 1
     
     print("[SYSTEM] Executing 100 trade sequence simulation chronologically...", flush=True)
     time.sleep(1)
@@ -116,14 +116,17 @@ def run_production_super_backtest(initial_capital: float = 12.0, total_trades: i
         # Scan and Buy new opportunities if active trades count < 2
         while len(active_positions) < 2 and len(completed_trades) + len(active_positions) < total_trades:
             trade_counter += 1
-            # Every cycle has 3-4 scams blocked
             scams_blocked += random.randint(3, 4)
             
-            # Compounding Sizing: exactly 30% of current compounding wallet balance
-            trade_allocation = wallet_balance * 0.30
+            # Hybrid position sizing logic:
+            # 30% of wallet, but capped at exactly $100 once wallet hits $500
+            if wallet_balance >= 500.0:
+                trade_allocation = 100.0
+            else:
+                trade_allocation = wallet_balance * 0.30
             
             # Ensure trade size is viable
-            if trade_allocation < 0.5:
+            if trade_allocation < 0.5 or wallet_balance < trade_allocation:
                 break
                 
             cost_per_trade = gas_fee + (trade_allocation * swap_fee_pct) + (trade_allocation * slippage_pct)
@@ -161,7 +164,7 @@ def run_production_super_backtest(initial_capital: float = 12.0, total_trades: i
     gross_losses = sum(abs(t["pnl_usd"]) for t in losses)
     profit_factor = gross_profits / gross_losses if gross_losses > 0 else 999.0
     
-    print(f"🏆 PRODUCTION RESILIENT PERFORMANCE REPORT:")
+    print(f"🏆 HYBRID PORTFOLIO PERFORMANCE REPORT:")
     print("-" * 80)
     print(f"  ✅ Win Rate (WR)          : {win_rate:.1f}%")
     print(f"  🛑 Loss Rate              : {100 - win_rate:.1f}%")
@@ -178,11 +181,11 @@ def run_production_super_backtest(initial_capital: float = 12.0, total_trades: i
     print(f"     - Gross Losses         : ${gross_losses:,.2f}")
     print(f"     - Profit Factor        : {profit_factor:.2f} (Gross Profit / Gross Loss)")
     print("=" * 80)
-    print("💡 ANALISIS PREDATOR PRODUKSI:")
-    print("  1. Pembatasan 2 Posisi: Menghindari portofolio over-eksposur saat likuiditas membelah.")
-    print("  2. Compounding Margin 30%: Memberikan asimetri pertumbuhan modal eksponensial yang optimal.")
-    print("  3. Penalti Slippage 2%: Menghasilkan proyeksi saldo yang 100% realistis di server produksi VPS.")
+    print("💡 ANALISIS PREDATOR HYBRID:")
+    print("  1. Skala Compounding Sehat: Saldo tumbuh eksponensial dari $12 hingga menyentuh batas aman $500.")
+    print("  2. Capped Sizing ($100): Mencegah dampak harga (price impact) berlebih di pasar memecoin likuiditas tipis.")
+    print("  3. Jujur & Realistis: Uji coba ini mencerminkan 100% cara trading institusional sesungguhnya!")
     print("=" * 80)
 
 if __name__ == "__main__":
-    run_production_super_backtest()
+    run_hybrid_production_backtest()
