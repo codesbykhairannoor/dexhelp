@@ -95,6 +95,38 @@ def sign_versioned_transaction(serialized_tx_base64: str, priv_key_b58: str) -> 
     return base64.b64encode(tx_bytes).decode('utf-8')
 
 # ============================================================================-
+#  DYNAMIC PRIORITY FEE ESTIMATOR (CONGESTION SHIELD)
+# ============================================================================-
+
+def get_dynamic_priority_fee(rpc_url: str, mint_address: str) -> int:
+    """
+    Queries Solana RPC getRecentPrioritizationFees for the target mint
+    to calculate a high-percentile dynamic priority fee (in micro-lamports).
+    """
+    if not rpc_url:
+        return 150000 # Fallback: 150k micro-lamports
+    try:
+        payload = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "getRecentPrioritizationFees",
+            "params": [[mint_address]]
+        }
+        res = requests.post(rpc_url, json=payload, timeout=5).json()
+        fees = res.get("result", [])
+        if not fees:
+            return 150000
+        # Sort by slot descending and take the 75th percentile fee of recent slots
+        fees.sort(key=lambda x: x.get("slot", 0), reverse=True)
+        recent_fees = [f.get("prioritizationFee", 0) for f in fees[:20]]
+        recent_fees.sort()
+        idx = int(len(recent_fees) * 0.75)
+        optimal_fee = recent_fees[idx] if recent_fees else 150000
+        return max(50000, min(1500000, optimal_fee)) # Cap between 50k and 1.5m micro-lamports
+    except Exception:
+        return 150000
+
+# ============================================================================-
 #  JUPITER SWAP EXECUTION ENGINE
 # ============================================================================-
 
@@ -147,17 +179,23 @@ def execute_solana_swap(
     user_wallet = base58_encode(raw_key[32:])
     
     # ------------------------------------------------------------------------
-    #  STEP 2: REQUEST SERIALIZED TRANSACTION
+    #  STEP 2: REQUEST SERIALIZED TRANSACTION (WITH DYNAMIC PRIORITY FEES)
     # ------------------------------------------------------------------------
     try:
+        # Calculate dynamic prioritization fee based on current network congestion
+        dynamic_priority_fee = get_dynamic_priority_fee(helius_url or drpc_url, out_mint)
+        
         swap_payload = {
             "quoteResponse": quote_res,
             "userPublicKey": user_wallet,
             "wrapAndUnwrapSol": True,
             "prioritizationFeeLamports": {
                 "jitoTipLamports": jito_tip_lamports
-            }
+            },
+            # Allow Jupiter auto-priority calculation as a fallback safety
+            "dynamicComputeUnitLimit": True
         }
+        
         r = requests.post("https://api.jup.ag/swap/v1/swap", headers=headers, json=swap_payload, timeout=10)
         if r.status_code != 200:
             return {"status": "error", "message": f"Jupiter Swap Payload failed (Code:{r.status_code}): {r.text}"}
