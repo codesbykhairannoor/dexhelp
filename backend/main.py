@@ -4,15 +4,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from sentiment import get_crypto_news, get_fred_macro_context
 from data_fetcher import (
     fetch_all_tickers, get_order_book_details,
-    get_technical_indicators, get_forex_data,
-    get_dune_macro_metrics
+    get_technical_indicators, get_dune_macro_metrics
 )
 from ai_model import analyze_and_sort
 from database import log_trade, get_performance_stats, init_db
 from bitget_executor import BitgetExecutor
 from crypto_engine import run_crypto_engine
-from forex_executor import ForexExecutor
-from news_sniper import get_sniper_instance
+from dex_hunter import start_dex_hunter, get_scanned_gems, scan_custom_token
 import threading
 import time
 import subprocess
@@ -69,19 +67,12 @@ def _kill_stale_port(port: int = 8000):
 #  SINGLETON EXECUTORS
 # ============================================================================-
 _bitget_executor: BitgetExecutor = None
-_forex_executor: ForexExecutor = None
 
 def get_bitget_executor() -> BitgetExecutor:
     global _bitget_executor
     if _bitget_executor is None:
         _bitget_executor = BitgetExecutor()
     return _bitget_executor
-
-def get_forex_executor() -> ForexExecutor:
-    global _forex_executor
-    if _forex_executor is None:
-        _forex_executor = ForexExecutor()
-    return _forex_executor
 
 # ============================================================================-
 #  LIFESPAN - menggantikan @app.on_event("startup") yang deprecated
@@ -142,24 +133,7 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"[SYSTEM] Gagal memulai WebSocket: {e}", flush=True)
 
-    # 4. Forex Engine
-    try:
-        fx = get_forex_executor()
-        fx_thread = threading.Thread(
-            target=fx.monitor_forex_market, daemon=True, name="ForexEngine"
-        )
-        fx_thread.start()
-        print("[SYSTEM] Forex Engine AKTIF!", flush=True)
-    except Exception as e:
-        print(f"[SYSTEM] Gagal memulai Forex Engine: {e}", flush=True)
 
-    # 5. News Sniper
-    try:
-        news_sniper = get_sniper_instance()
-        news_sniper.start()
-        print("[SYSTEM] News Sniper Engine AKTIF (Sub-millisecond Ready)!", flush=True)
-    except Exception as e:
-        print(f"[SYSTEM] Gagal memulai News Sniper: {e}", flush=True)
 
     print("[SYSTEM] All engines started. Bot is LIVE.", flush=True)
 
@@ -170,6 +144,13 @@ async def lifespan(app: FastAPI):
         print("[SYSTEM] Early Signal Engine AKTIF! (OI Tracker + DexScreener)", flush=True)
     except Exception as e:
         print(f"[SYSTEM] Gagal memulai Early Signal Engine: {e}", flush=True)
+
+    # 7. DexScreener Predator Scam-Shield Engine
+    try:
+        start_dex_hunter()
+        print("[SYSTEM] DexScreener Predator Scam-Shield Engine AKTIF!", flush=True)
+    except Exception as e:
+        print(f"[SYSTEM] Gagal memulai DexScreener Predator: {e}", flush=True)
 
     yield  # <- aplikasi berjalan di sini
 
@@ -267,14 +248,7 @@ def get_bitget_status():
     except Exception as e:
         return {"connected": False, "message": str(e)}
 
-@app.get("/api/forex-status")
-def get_forex_status():
-    try:
-        executor = get_forex_executor()
-        success, message = executor.test_connection()
-        return {"connected": success, "message": message}
-    except Exception as e:
-        return {"connected": False, "message": str(e)}
+
 
 @app.get("/api/top-coins")
 def get_top_coins(timeframe: str = "15m"):
@@ -325,31 +299,7 @@ def get_top_coins(timeframe: str = "15m"):
     except Exception as e:
         return {"status": "error", "message": str(e)}
 
-@app.get("/api/forex")
-def get_forex(timeframe: str = "15m"):
-    try:
-        asset_data = get_forex_data("XAUUSD", interval=timeframe)
-        if not asset_data:
-            return {"status": "error", "message": "Failed to fetch data."}
 
-        lp  = float(asset_data.get('lastPrice', 0))
-        ema = float(asset_data.get('ema_200', 0))
-        atr = float(asset_data.get('atr', 0))
-        asset_data['trend'] = "Bullish" if lp > ema else "Bearish"
-
-        entry_price = lp - (0.1 * atr) if atr else lp
-        asset_data['entry_price'] = round(entry_price, 2)
-        asset_data['sl_price']    = round(entry_price - (1.5 * atr), 2) if atr else round(entry_price - 2, 2)
-        asset_data['tp_price']    = round(entry_price + (3.0 * atr), 2) if atr else round(entry_price + 5, 2)
-        asset_data['trade_signal'] = "ENTRY NOW" if lp <= entry_price * 1.001 else "LIMIT ORDER"
-
-        return {"status": "success", "data": [asset_data]}
-    except Exception as e:
-        return {"status": "error", "message": str(e)}
-
-@app.get("/api/idx-stocks")
-def get_idx(timeframe: str = "15m"):
-    return {"status": "success", "data": [], "market_status": "CLOSED"}
 
 @app.get("/api/performance")
 def get_performance(market: str = None):
@@ -372,8 +322,7 @@ def execute_now(trade: dict):
             executor = get_bitget_executor()
             success, res = executor.place_futures_order(symbol, side, tp_price=tp, sl_price=sl)
         else:
-            executor = get_forex_executor()
-            success, res = executor.place_forex_order(symbol, side, 0.01, take_profit_val=tp, stop_loss_val=sl)
+            return {"status": "error", "message": "Non-crypto market execution is disabled."}
 
         if success:
             return {"status": "success", "message": f"Manual {side.upper()} executed for {symbol}!"}
@@ -410,6 +359,68 @@ def get_history():
         cursor.close()
         conn.close()
         return {"status": "success", "data": history}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.get("/api/dex-gems")
+def get_dex_gems():
+    """Returns audited and ranked list of early-stage DexScreener gems."""
+    try:
+        return {"status": "success", "data": get_scanned_gems()}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/scan-token")
+def scan_token(payload: dict):
+    """Performs an instant target scan on a custom contract address."""
+    try:
+        chain = payload.get("chain", "solana")
+        address = payload.get("address")
+        if not address:
+            return {"status": "error", "message": "Address is required."}
+        
+        result = scan_custom_token(chain, address)
+        return {"status": "success", "data": result}
+    except Exception as e:
+        return {"status": "error", "message": str(e)}
+
+@app.post("/api/execute-solana-swap")
+def execute_swap_endpoint(payload: dict):
+    """
+    Executes a live on-chain Solana token swap using Jupiter & Jito MEV Shield.
+    Body params:
+      - input_mint: "sol" or token address
+      - output_mint: "sol" or token address
+      - amount_sol: amount of SOL to trade (e.g. 0.05)
+      - slippage_bps: slippage in basis points (default: 250)
+      - jito_tip_sol: Jito tip in SOL (default: 0.001)
+    """
+    try:
+        from solana_executor import execute_solana_swap
+        
+        input_mint = payload.get("input_mint", "sol")
+        output_mint = payload.get("output_mint")
+        amount_sol = float(payload.get("amount_sol", 0))
+        slippage_bps = int(payload.get("slippage_bps", 250))
+        jito_tip_sol = float(payload.get("jito_tip_sol", 0.001))
+        
+        if not output_mint:
+            return {"status": "error", "message": "output_mint is required."}
+        if amount_sol <= 0:
+            return {"status": "error", "message": "amount_sol must be greater than 0."}
+            
+        # Convert to lamports
+        amount_lamports = int(amount_sol * 1_000_000_000)
+        jito_tip_lamports = int(jito_tip_sol * 1_000_000_000)
+        
+        result = execute_solana_swap(
+            input_mint=input_mint,
+            output_mint=output_mint,
+            amount_lamports=amount_lamports,
+            slippage_bps=slippage_bps,
+            jito_tip_lamports=jito_tip_lamports
+        )
+        return result
     except Exception as e:
         return {"status": "error", "message": str(e)}
 

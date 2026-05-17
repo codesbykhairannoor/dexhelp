@@ -896,38 +896,25 @@ def get_defillama_metrics(protocol="aave"):
     return {"tvl": 0, "tvl_change_24h": 0}
 
 def get_forex_data(symbol="XAUUSD", interval="15m"):
-    """ULTIMATE FOREX ENGINE: MetaAPI Price + PAXG Proxy Indicators"""
+    """MOCKED FOREX ENGINE: Returns neutral or proxy indicators since Forex is removed"""
     try:
-        token = os.getenv("FOREX_META_API_TOKEN")
-        account_id = os.getenv("FOREX_ACCOUNT_ID")
-        headers_meta = {"auth-token": token}
-        base_url = "https://mt-client-api-v1.london.agiliumtrade.ai"
+        if symbol == "DXY":
+            return {
+                "symbol": "DXY",
+                "lastPrice": 104.5,
+                "rsi": 50,
+                "trend": "NEUTRAL",
+                "dxy_trend": "NEUTRAL",
+                "spread": 10
+            }
         
-        exact_price = 0
-        working_symbol = symbol
-        for suffix in ["", "c", ".m"]:
-            try:
-                sym_try = f"{symbol}{suffix}"
-                r = requests.get(f"{base_url}/users/current/accounts/{account_id}/symbols/{sym_try}/current-price", headers=headers_meta, timeout=5)
-                if r.status_code == 200:
-                    d = r.json()
-                    if float(d.get('bid', 0)) > 0:
-                        exact_price = float(d.get('bid', 0))
-                        working_symbol = sym_try
-                        break
-            except: continue
-
+        # PAXG as proxy for gold
         indicators = get_technical_indicators("PAXGUSDT", interval=interval)
-        
-        # Calculate Trend based on EMA 200
-        last_price = exact_price if exact_price > 0 else indicators.get("mark_price", 0)
+        last_price = indicators.get("mark_price", 0)
         ema_200 = indicators.get("ema_200", 0)
         trend = "NEUTRAL"
         if last_price > ema_200 and ema_200 > 0: trend = "BULLISH"
         elif last_price < ema_200 and ema_200 > 0: trend = "BEARISH"
-        
-        # Spread calculation (simplified if not available from MetaAPI)
-        spread = 50 # Default safe spread
         
         return {
             "symbol": symbol,
@@ -945,12 +932,12 @@ def get_forex_data(symbol="XAUUSD", interval="15m"):
             "choch_bearish": indicators.get("choch_bearish", False),
             "fib_ext": indicators.get("fib_ext", 0),
             "trend": trend,
-            "dxy_trend": trend if symbol == "DXY" else "NEUTRAL",
-            "spread": spread,
-            "working_symbol": working_symbol
+            "dxy_trend": "NEUTRAL",
+            "spread": 50,
+            "working_symbol": symbol
         }
     except Exception as e:
-        print(f"Error Forex indicators: {e}")
+        print(f"Error Forex indicators proxy: {e}")
         return {}
 
 def get_dune_macro_metrics():

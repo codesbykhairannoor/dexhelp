@@ -1,4 +1,4 @@
-﻿import hmac
+import hmac
 import hashlib
 import base64
 import asyncio
@@ -328,13 +328,7 @@ class FinnhubWS:
                                     state.rt_news.append({"headline": headline, "score": score, "time": time.time()})
                                     if len(state.rt_news) > 50: state.rt_news.pop(0)
                                     print(f"[NEWS] {headline[:60]}... | Sentiment: {score}")
-                                    if abs(score) >= 0.2:
-                                        try:
-                                            from news_sniper import get_sniper_instance
-                                            sniper = get_sniper_instance()
-                                            sniper.process_finnhub_news(headline, score)
-                                        except Exception as e:
-                                            print(f"[FINNHUB SNIPER ERROR] {e}")
+                                    pass
                                 except Exception:
                                     pass
 

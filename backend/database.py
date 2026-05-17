@@ -1,4 +1,4 @@
-﻿import os
+import os
 import time
 import sqlite3
 from dotenv import load_dotenv
@@ -192,11 +192,7 @@ import requests
 def get_current_price(symbol, market='crypto'):
     try:
         if market == 'forex' or "XAU" in symbol:
-            from forex_executor import ForexExecutor
-            fx = ForexExecutor()
-            price_data = fx.get_live_price()
-            mid = price_data.get("mid", 0)
-            if mid > 0: return mid
+            return None
 
         clean_symbol = symbol.replace("/", "").replace(":USDT", "").replace("USDT", "") + "USDT"
         url = f"https://api.bitget.com/api/v2/mix/market/tickers?productType=USDT-FUTURES"
