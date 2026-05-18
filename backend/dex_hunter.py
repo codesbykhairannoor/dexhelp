@@ -21,6 +21,7 @@ CHAIN_MAPPING = {
 
 _scanned_gems = []
 _verified_profiles = set()
+_trending_metas = []
 _boost_tracker = {}
 _scan_lock = threading.Lock()
 _scan_thread = None
@@ -260,6 +261,14 @@ def calculate_gem_score(pair_data: dict, security: dict) -> int:
     elif p5m < -40.0:
         score -= 20 # Avoid panic selling momentum.
 
+    # 8. DexScreener Verified Paid Orders Bonus (V6 Premium legitimacy Check)
+    if pair_data.get("has_paid_order"):
+        score += 20
+        
+    # 9. Narrative Meta Alignment (V6 trending narrative match)
+    if any(meta in pair_data.get("name", "").lower() or meta in pair_data.get("symbol", "").lower() for meta in _trending_metas):
+        score += 15
+
     return max(0, min(100, score))
 
 # ============================================================================-
@@ -271,7 +280,7 @@ def _fetch_candidates() -> list:
     global _verified_profiles, _boost_tracker
     candidates = {}
     
-    # 1. Update Verified Profiles (Paid Listing Check)
+    # 1. Update Verified Profiles & Trending Metas (V6 Premium Data Fetch)
     try:
         profile_url = "https://api.dexscreener.com/token-profiles/latest/v1"
         res = requests.get(profile_url, timeout=5)
@@ -281,6 +290,17 @@ def _fetch_candidates() -> list:
                 _verified_profiles = {p.get("tokenAddress") for p in profiles if p.get("tokenAddress")}
     except Exception as e:
         print(f"[DEX HUNTER] Profile list fetch failed: {e}")
+
+    global _trending_metas
+    try:
+        meta_url = "https://api.dexscreener.com/metas/trending/v1"
+        res = requests.get(meta_url, timeout=5)
+        if res.status_code == 200:
+            metas = res.json()
+            if isinstance(metas, list):
+                _trending_metas = [m.get("slug", "").lower() for m in metas if m.get("slug")]
+    except Exception as e:
+        print(f"[DEX HUNTER] Trending metas list fetch failed: {e}")
 
     # 2. Fetch from Token Boosts (Latest & Top)
     boost_urls = [
@@ -419,6 +439,19 @@ def _scan_pipeline():
             for gem in subset:
                 # 1. Run live Scam-Shield audit via GoPlus + Honeypot + RugCheck
                 security = check_token_security(gem["chain"], gem["address"])
+                
+                # V6 Upgrade: Verify if developer has approved paid orders
+                has_paid_order = False
+                try:
+                    order_url = f"https://api.dexscreener.com/orders/v1/{gem['chain']}/{gem['address']}"
+                    r = requests.get(order_url, timeout=5)
+                    if r.status_code == 200:
+                        orders = r.json()
+                        if isinstance(orders, list):
+                            has_paid_order = any(o.get("status") == "approved" for o in orders)
+                except Exception:
+                    pass
+                gem["has_paid_order"] = has_paid_order
                 
                 # 2. Grade expected value score
                 score = calculate_gem_score(gem, security)
