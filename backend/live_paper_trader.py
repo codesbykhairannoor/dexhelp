@@ -183,7 +183,7 @@ def run_live_paper_trader():
                         
                         print(f"  [SCAN] Analisis {gem['symbol']} | Safety: {security['status']} | Score: {score}/100")
                         
-                        if security["status"] in ["CLEAN & SAFE", "WARNINGS"] and score >= 80:
+                        if security["status"] in ["CLEAN & SAFE", "WARNINGS"] and score >= 70:
                             if score > best_score:
                                 best_score = score
                                 best_candidate = gem

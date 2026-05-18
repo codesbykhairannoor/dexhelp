@@ -228,7 +228,7 @@ def run_live_real_trader():
                         
                         print(f"  [SCANNER] Auditing candidate {gem['symbol']} | Safety Status: {security['status']} | Score: {score}/100", flush=True)
                         
-                        if security["status"] in ["CLEAN & SAFE", "WARNINGS"] and score >= 80:
+                        if security["status"] in ["CLEAN & SAFE", "WARNINGS"] and score >= 70:
                             if score > best_score:
                                 best_score = score
                                 best_candidate = gem
