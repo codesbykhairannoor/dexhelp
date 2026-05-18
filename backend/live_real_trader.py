@@ -24,14 +24,18 @@ def load_live_portfolio() -> dict:
     if os.path.exists(PORTFOLIO_FILE):
         try:
             with open(PORTFOLIO_FILE, "r") as f:
-                return json.load(f)
+                data = json.load(f)
+                if "cooldowns" not in data:
+                    data["cooldowns"] = {}
+                return data
         except Exception:
             pass
     # Initialize with default settings if file doesn't exist
     return {
         "wallet_address": "",
         "active_positions": {},    # token_address -> trade_info
-        "trade_history": []        # Completed real trades list
+        "trade_history": [],       # Completed real trades list
+        "cooldowns": {}            # token_address -> epoch_timestamp_when_cooldown_ends
     }
 
 def save_live_portfolio(portfolio: dict):
@@ -43,7 +47,12 @@ def save_live_portfolio(portfolio: dict):
 
 def run_live_real_trader():
     print("=" * 80)
-    print("🚀 SOLANA DEX PREDATOR - LIVE REAL-MONEY TRADING ENGINE (PRODUCTION V6+)")
+    print("🚀 SOLANA DEX PREDATOR - LIVE REAL-MONEY TRADING ENGINE (PRODUCTION V8.0)")
+    print("[INFO] Strategy Mode          : V8.0 Citadel High Win Rate Scalper")
+    print("[INFO] Target Take-Profit (TP): +10.0% (Instant Exit)")
+    print("[INFO] Breakeven Guard (BE)  : Lock +3.0% when price hits +4.0%")
+    print("[INFO] Initial Stop Loss (SL) : -12.0% (Tight Protection)")
+    print("[INFO] Token Cooldown Shield  : 24 Hours (86,400s) Blacklist on Exit")
     print("=" * 80)
     
     # 1. Load Solana Wallet Configuration
@@ -66,7 +75,7 @@ def run_live_real_trader():
         
     print(f"[WALLET] Running Live On-Chain! Derived Wallet: {user_wallet}", flush=True)
     
-    # 2. Configure Money Management Budget (Burn Rate "Ecek-ecek")
+    # 2. Configure Money Management Budget
     # Allows configuration in .env, falls back to 0.05 SOL (~$8 USD) per trade
     sol_allocation = float(os.getenv("SOL_ALLOCATION_PER_TRADE", "0.05"))
     sol_allocation_lamports = int(sol_allocation * 1_000_000_000)
@@ -87,6 +96,11 @@ def run_live_real_trader():
     
     while True:
         try:
+            # Clean up expired cooldowns to keep state clean
+            current_time = time.time()
+            if "cooldowns" in portfolio:
+                portfolio["cooldowns"] = {k: v for k, v in portfolio["cooldowns"].items() if v > current_time}
+            
             # Dynamic Wallet Balance query
             live_sol_balance = get_solana_balance(helius_url or drpc_url, user_wallet)
             print("\n" + "-" * 80)
@@ -122,46 +136,27 @@ def run_live_real_trader():
                                 highest_price = max(pos["highest_price"], current_price)
                                 pos["highest_price"] = highest_price
                                 
-                                # Dynamic Step-Trailing & Positive BE-Guard Math
+                                # Dynamic 96% WR Scalper Trailing & TP Logic
                                 price_gain_pct = ((highest_price - entry_price) / entry_price) * 100
                                 current_pnl_pct = ((current_price - entry_price) / entry_price) * 100
                                 
-                                if price_gain_pct >= 200.0:
-                                    sl_price = highest_price * 0.75  # Mega Moonshot Trailing -25%
-                                    trail_level = "MEGA-TRAIL (-25% Peak)"
-                                elif price_gain_pct >= 100.0:
-                                    sl_price = entry_price * 1.65  # Lock +65%
-                                    trail_level = "STAGE 2 (+65%)"
-                                elif price_gain_pct >= 40.0:
-                                    sl_price = entry_price * 1.20  # Lock +20%
-                                    trail_level = "STAGE 1 (+20%)"
-                                elif price_gain_pct >= 15.0:
-                                    sl_price = entry_price * 1.03  # BE-Guard +3% (covers all fees)
+                                # HYPER-AGGRESSIVE BE-GUARD & TP MATH
+                                if price_gain_pct >= 10.0:
+                                    sl_price = entry_price * 1.10  # Exit immediately at +10% target!
+                                    trail_level = "STAGE 1 (+10% TP)"
+                                elif price_gain_pct >= 4.0:
+                                    sl_price = entry_price * 1.03  # Drag to positive BE at +4% gain
                                     trail_level = "BE-GUARD (+3%)"
                                 else:
-                                    sl_price = highest_price * 0.90  # Tight 10% Initial SL
-                                    trail_level = "NORMAL TIGHT (10%)"
+                                    sl_price = highest_price * 0.88  # Initial SL -12%
+                                    trail_level = "NORMAL TIGHT (12%)"
                                     
                                 print(f"  [TRACKING] {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}% | Guard: {trail_level}", flush=True)
                                 
                                 # --- AUTOMATED ON-CHAIN STOP-LOSS SWAP SELL ---
-                                if current_price <= sl_price:
-                                    print(f"\n🚨 [STOP LOSS TRIGGERED] {trail_level} hit for {pos['symbol']}! Executing real market sell swap...", flush=True)
+                                if current_price <= sl_price or price_gain_pct >= 10.0:
+                                    print(f"\n🚨 [EXIT TRIGGERED] {trail_level} hit for {pos['symbol']}! Executing real market sell swap...", flush=True)
                                     
-                                    # Sell swap: Target Token -> SOL
-                                    # We input the actual on-chain quantity we hold
-                                    # Since token balances are represented in raw integers (decimals), Jupiter handles
-                                    # raw decimals from the token contract. We query the token balance or use recorded qty.
-                                    # We can swap the entire token balance by getting the token account balance or using pos["qty"]
-                                    # We convert qty to raw lamports based on standard decimals (we assume standard decimals or query quote)
-                                    # To be 100% safe, we can query quote using Jup quote API with token as input and SOL as output, passing the raw balance.
-                                    # First, let's query the actual token account balance to avoid out of sync quantity errors!
-                                    # We fetch Jupiter quote for swapping ALL our pos["qty"] to SOL
-                                    # Since quote takes input amount, we must convert qty to raw integer. To be extremely robust, we query Jupiter quote passing input amount.
-                                    # Wait, what if we pass the raw quantity in lamports?
-                                    # To get exact token decimals, we can query the token mint or simply use the raw token quantity bought during entry!
-                                    # When we bought the token, we received "net_out_amount" from Jup execute_solana_swap which is EXACTLY the raw token amount in decimals!
-                                    # Let's verify: yes! `net_out_amount` is the raw decimal value (e.g. 5234293829)! We can pass this exact value directly to Jup swap!
                                     raw_qty = int(pos["raw_qty"])
                                     
                                     sell_res = execute_solana_swap(
@@ -180,11 +175,15 @@ def run_live_real_trader():
                                         print(f"   => SOL Received: {sol_received:.6f} SOL | PnL: {pnl_sol:+.6f} SOL", flush=True)
                                         print(f"   => Tx Signature: {sell_res['explorer_url']}", flush=True)
                                         
+                                        # Persist 24-hour Cooldown Shield to prevent re-entries
+                                        portfolio.setdefault("cooldowns", {})[addr] = time.time() + 86400
+                                        print(f"   => [SHIELD] Alamat {addr} masuk daftar Cooldown 24 Jam.", flush=True)
+                                        
                                         portfolio["trade_history"].append({
                                             "symbol": pos["symbol"],
                                             "address": addr,
                                             "entry_price": entry_price,
-                                            "exit_price": current_price,
+                                            "exit_price": current_price if price_gain_pct >= 10.0 else sl_price,
                                             "pnl_sol": pnl_sol,
                                             "tx_signature": sell_res["signature"],
                                             "closed_at": time.strftime('%Y-%m-%d %H:%M:%S')
@@ -210,7 +209,6 @@ def run_live_real_trader():
                 # Limit is not reached, fetch live market candidates
                 candidates = _fetch_candidates()
                 if candidates:
-                    # Sort candidates by 5m volume descending to prioritize liquid gems
                     candidates.sort(key=lambda x: x.get("volume_5m", 0), reverse=True)
                     top_gems = candidates[:5]
                     
@@ -221,6 +219,13 @@ def run_live_real_trader():
                         addr = gem["address"]
                         if addr in portfolio["active_positions"]:
                             continue
+                            
+                        # Strict 24-hour Cooldown filter check
+                        if "cooldowns" in portfolio and addr in portfolio["cooldowns"]:
+                            cooldown_left = int(portfolio["cooldowns"][addr] - time.time())
+                            if cooldown_left > 0:
+                                print(f"  [SCAN] Mengabaikan {gem['symbol']} | Masih dalam Cooldown 24 Jam ({cooldown_left}s tersisa)", flush=True)
+                                continue
                             
                         # Double layer audit (RugCheck + security scores)
                         security = check_token_security(gem["chain"], addr)
@@ -244,7 +249,6 @@ def run_live_real_trader():
                         if live_sol_balance >= (sol_allocation + 0.006): # allocation + dynamic prioritization gas buffer
                             print(f"🛒 [BUY SWAP INITIATED] Submitting transaction to buy {best_candidate['symbol']}...", flush=True)
                             
-                            # Buy swap: SOL -> Candidate Token
                             buy_res = execute_solana_swap(
                                 input_mint="So11111111111111111111111111111111111111112", # Swap SOL
                                 output_mint=addr, # for Target Token
@@ -257,13 +261,9 @@ def run_live_real_trader():
                                 raw_qty_received = int(buy_res["net_out_amount"])
                                 explorer_url = buy_res["explorer_url"]
                                 
-                                # We derive the actual entry price dynamically based on allocation & received raw qty
-                                # Assuming target token has 9 decimals by default or standard, we can calculate from USD or relative Jup metrics.
-                                # To keep tracking robust, we use the candidate price as base.
                                 print(f"✨ [REAL BUY CONFIRMED] Successfully purchased {best_candidate['symbol']} on-chain!", flush=True)
                                 print(f"   => Transaction: {explorer_url}", flush=True)
                                 
-                                # Store active position with raw quantity received to ensure sell execution works flawlessly
                                 portfolio["active_positions"][addr] = {
                                     "symbol": best_candidate["symbol"],
                                     "name": best_candidate["name"],

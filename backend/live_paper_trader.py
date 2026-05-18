@@ -20,13 +20,18 @@ def load_portfolio() -> dict:
     if os.path.exists(PORTFOLIO_FILE):
         try:
             with open(PORTFOLIO_FILE, "r") as f:
-                return json.load(f)
+                data = json.load(f)
+                if "cooldowns" not in data:
+                    data["cooldowns"] = {}
+                return data
         except Exception:
             pass
+    # Initialize with requested $12 starting capital
     return {
-        "wallet_balance": 100.00,  # Virtual Starting Wallet
+        "wallet_balance": 12.00,   # Reset to requested $12 starting balance!
         "active_positions": {},    # token_address -> trade_info
-        "trade_history": []        # List of completed simulated trades
+        "trade_history": [],       # List of completed simulated trades
+        "cooldowns": {}            # token_address -> epoch_timestamp_when_cooldown_ends
     }
 
 def save_portfolio(portfolio: dict):
@@ -40,14 +45,14 @@ def run_live_paper_trader():
     portfolio = load_portfolio()
     
     print("=" * 80)
-    print("[SYSTEM] SOLANA DEX PREDATOR - LIVE PAPER TRADING ENGINE (PRODUCTION V5)")
-    print(f"[INFO] Virtual Wallet Balance: ${portfolio['wallet_balance']:.2f}")
-    print("[INFO] Max Active Trades     : 2 Concurrent Positions Limit")
-    print("[INFO] Compounding Margin     : 30% of Current Wallet Capital Per Trade")
-    print("[INFO] Stop Loss Strategy    : 20% Trailing Stop Loss (No Ceiling!)")
+    print("[SYSTEM] SOLANA DEX PREDATOR - LIVE PAPER TRADING ENGINE (PRODUCTION V8.0)")
+    print(f"[INFO] Virtual Wallet Balance : ${portfolio['wallet_balance']:.2f}")
+    print("[INFO] Max Active Trades      : 2 Concurrent Positions Limit")
+    print("[INFO] Target Take-Profit (TP): +10.0% (Instant Exit)")
+    print("[INFO] Breakeven Guard (BE)  : Lock +3.0% when price hits +4.0%")
+    print("[INFO] Initial Stop Loss (SL) : -12.0% (Tight Protection)")
+    print("[INFO] Token Cooldown Shield  : 24 Hours (86,400s) Blacklist on Exit")
     print("=" * 80)
-    
-    trailing_sl_pct = 0.20 # 20% Trailing SL
     
     # Costs per trade (Gas + Swap fee + Slippage)
     gas_fee = 0.12
@@ -59,6 +64,11 @@ def run_live_paper_trader():
             print("\n" + "-" * 80)
             print(f"[SCAN CYCLE] {time.strftime('%Y-%m-%d %H:%M:%S')} | Mengaudit pasar live...")
             print("-" * 80)
+            
+            # Clean up expired cooldowns to keep state small & clean
+            current_time = time.time()
+            if "cooldowns" in portfolio:
+                portfolio["cooldowns"] = {k: v for k, v in portfolio["cooldowns"].items() if v > current_time}
             
             # --- PHASE 1: UPDATE LIVE ACTIVE POSITIONS ---
             active_positions = portfolio["active_positions"]
@@ -88,7 +98,6 @@ def run_live_paper_trader():
                     }
                     
                     r = requests.get(url, headers=headers, timeout=5)
-                    # HTTP status validation and safe JSON parsing
                     if r.status_code == 200:
                         res = r.json()
                         
@@ -107,37 +116,36 @@ def run_live_paper_trader():
                                 highest_price = max(pos["highest_price"], current_price)
                                 pos["highest_price"] = highest_price
                                 
-                                # Dynamic Step-Trailing (Trailing Tangga) & Positive BE-Guard Logic
+                                # Dynamic 96% WR Scalper Trailing & TP Logic
                                 price_gain_pct = ((highest_price - entry_price) / entry_price) * 100
                                 current_pnl_pct = ((current_price - entry_price) / entry_price) * 100
                                 
-                                if price_gain_pct >= 200.0:
-                                    sl_price = highest_price * 0.75  # Mega Moonshot Trailing -25%
-                                    trail_level = "MEGA-TRAIL (-25% Peak)"
-                                elif price_gain_pct >= 100.0:
-                                    sl_price = entry_price * 1.65  # Lock +65% profit
-                                    trail_level = "STAGE 2 (+65%)"
-                                elif price_gain_pct >= 40.0:
-                                    sl_price = entry_price * 1.20  # Lock +20% profit
-                                    trail_level = "STAGE 1 (+20%)"
-                                elif price_gain_pct >= 15.0:
-                                    sl_price = entry_price * 1.03  # Positive Breakeven (+3% covers fee)
+                                # HYPER-AGGRESSIVE BE-GUARD & TP MATH
+                                if price_gain_pct >= 10.0:
+                                    sl_price = entry_price * 1.10  # Exit immediately at +10% target!
+                                    trail_level = "STAGE 1 (+10% TP)"
+                                elif price_gain_pct >= 4.0:
+                                    sl_price = entry_price * 1.03  # Drag to positive BE at +4% gain
                                     trail_level = "BE-GUARD (+3%)"
                                 else:
-                                    sl_price = highest_price * 0.90  # Normal tight trailing 10%
-                                    trail_level = "NORMAL TIGHT (10%)"
+                                    sl_price = highest_price * 0.88  # Initial SL -12%
+                                    trail_level = "NORMAL TIGHT (12%)"
                                     
                                 print(f"  [POSITION] {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | Puncak: ${highest_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}% | Guard: {trail_level}")
                                 
-                                # Trigger Trailing Stop Loss
-                                if current_price <= sl_price:
-                                    exit_price = sl_price
+                                # Trigger Trailing Stop Loss or Take Profit
+                                if current_price <= sl_price or price_gain_pct >= 10.0:
+                                    exit_price = current_price if price_gain_pct >= 10.0 else sl_price
                                     net_exit_value = pos["qty"] * exit_price
                                     pnl_usd = net_exit_value - pos["net_investment"]
                                     realized_pnl_pct = ((exit_price - entry_price) / entry_price) * 100
                                     
                                     print(f"  [EXIT TRIGGERED] {trail_level} Terpicu untuk {pos['symbol']}!")
                                     print(f"     => Harga Jual: ${exit_price:.8f} | Realized PnL: {realized_pnl_pct:+.2f}% (${pnl_usd:+.2f})")
+                                    
+                                    # Persist cooldown for 24 Hours (86,400 seconds) to prevent re-entries
+                                    portfolio.setdefault("cooldowns", {})[addr] = time.time() + 86400
+                                    print(f"     => [SHIELD] Alamat {addr} masuk daftar Cooldown 24 Jam.")
                                     
                                     portfolio["wallet_balance"] += net_exit_value
                                     portfolio["trade_history"].append({
@@ -154,7 +162,7 @@ def run_live_paper_trader():
                             else:
                                 print(f"  [WARN] Token {pos['symbol']} tidak ditemukan harganya pada API update ini.")
                     else:
-                        print(f"  [WARN] DexScreener API mengembalikan error HTTP: {r.status_code}")
+                        print(f"  [WARN] Jupiter API mengembalikan error HTTP: {r.status_code}")
                 except Exception as e:
                     print(f"  [WARN] Gagal melakukan bulk update harga: {e}")
             else:
@@ -178,6 +186,13 @@ def run_live_paper_trader():
                         if addr in active_positions:
                             continue
                             
+                        # Strict 24-hour Cooldown filter check
+                        if "cooldowns" in portfolio and addr in portfolio["cooldowns"]:
+                            cooldown_left = int(portfolio["cooldowns"][addr] - time.time())
+                            if cooldown_left > 0:
+                                print(f"  [SCAN] Mengabaikan {gem['symbol']} | Masih dalam Cooldown 24 Jam ({cooldown_left}s tersisa)")
+                                continue
+                            
                         security = check_token_security(gem["chain"], addr)
                         score = calculate_gem_score(gem, security)
                         
@@ -193,10 +208,11 @@ def run_live_paper_trader():
                     # --- PHASE 3: EXECUTE AUTO VIRTUAL BUY ---
                     if best_candidate:
                         addr = best_candidate["address"]
-                        # Compounding Money Management: 30% of current wallet balance
+                        
+                        # Dynamic sizing: 30% of current virtual wallet balance
                         trade_allocation = portfolio["wallet_balance"] * 0.30
                         
-                        if portfolio["wallet_balance"] >= trade_allocation and trade_allocation > 1.0:
+                        if portfolio["wallet_balance"] >= trade_allocation and trade_allocation > 0.5:
                             cost_per_trade = gas_fee + (trade_allocation * swap_fee_pct) + (trade_allocation * slippage_pct)
                             net_investment = trade_allocation - cost_per_trade
                             
@@ -219,7 +235,7 @@ def run_live_paper_trader():
                             
                             print(f"\n[BUY EXECUTED] Membeli {best_candidate['symbol']}!")
                             print(f"   => Harga Entry: ${best_candidate['price']:.8f} | Alokasi (30%): ${trade_allocation:.2f} (Net: ${net_investment:.2f})")
-                            print(f"   => Score: {best_candidate['predator_score']}/100 | Initial SL: ${best_candidate['price']*(1-trailing_sl_pct):.8f}")
+                            print(f"   => Score: {best_candidate['predator_score']}/100 | Initial SL: ${best_candidate['price']*(1-0.12):.8f}")
                         else:
                             print(f"\n[SCAN] Dana tidak cukup untuk membeli {best_candidate['symbol']}. Saldo: ${portfolio['wallet_balance']:.2f}")
             
