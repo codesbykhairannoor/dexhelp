@@ -27,6 +27,15 @@ def run_ultimate_trailing_test(seed: int = 777):
     total_losses = 0
     total_scams_blocked = 0
     
+    # Statistical counters for exit tiers
+    exit_tiers = {
+        "BE-GUARD (+3%)": 0,
+        "STAGE 1 (+20%)": 0,
+        "STAGE 2 (+65%)": 0,
+        "MEGA-TRAIL (>200%)": 0,
+        "NORMAL/LOSS SL": 0
+    }
+    
     # Stricter Entry Filter (Score 75+)
     weights = [0.01, 0.40, 0.59]  # [DUMP, SCALP, MOONSHOT]
     
@@ -152,6 +161,19 @@ def run_ultimate_trailing_test(seed: int = 777):
                         status = "LOSS"
                         
                     total_trades_count += 1
+                    
+                    # Accumulate exit statistics dynamically
+                    if "BE-GUARD" in trail_level:
+                        exit_tiers["BE-GUARD (+3%)"] += 1
+                    elif "STAGE 1" in trail_level:
+                        exit_tiers["STAGE 1 (+20%)"] += 1
+                    elif "STAGE 2" in trail_level:
+                        exit_tiers["STAGE 2 (+65%)"] += 1
+                    elif "MEGA-TRAIL" in trail_level:
+                        exit_tiers["MEGA-TRAIL (>200%)"] += 1
+                    else:
+                        exit_tiers["NORMAL/LOSS SL"] += 1
+                        
                     print(f"   [EXIT] {symbol} Closed! Style: {category:<8} | Lock Level: {trail_level:<25} | PnL: {pnl_pct:+.2f}% (${pnl_usd:+.2f}) -> {status}")
                     del active_positions[symbol]
             
@@ -197,6 +219,12 @@ def run_ultimate_trailing_test(seed: int = 777):
     print(f"  Total Trades Closed : {total_trades_count} trades")
     print(f"  Overall Win Rate    : {(total_wins/total_trades_count)*100:.1f}% (Wins: {total_wins} / Losses: {total_losses})")
     print(f"  Total Scams Blocked : {total_scams_blocked} Scams Shielded")
+    print("=" * 80)
+    print("📊 DISTRIBUSI TIER EXIT (EVALUASI DETAIL):")
+    print("-" * 50)
+    for tier, count in exit_tiers.items():
+        pct = (count / total_trades_count) * 100 if total_trades_count > 0 else 0.0
+        print(f"  - {tier:<20} : {count:>2} Kali ({pct:>5.1f}%)")
     print("=" * 80)
     print("💡 KESIMPULAN STRATEGIS:")
     print("  1. Positive Breakeven (+3%) berhasil menggeser 100% 'Scratch Trades' menjadi")
