@@ -126,6 +126,23 @@ def get_dynamic_priority_fee(rpc_url: str, mint_address: str) -> int:
     except Exception:
         return 150000
 
+def get_solana_balance(rpc_url: str, wallet_address: str) -> float:
+    """Queries Solana RPC for the balance of the wallet address in SOL."""
+    if not rpc_url:
+        return 0.0
+    try:
+        payload = {
+            "jsonrpc": "2.0",
+            "id": 1,
+            "method": "getBalance",
+            "params": [wallet_address]
+        }
+        res = requests.post(rpc_url, json=payload, timeout=5).json()
+        lamports = res.get("result", {}).get("value", 0)
+        return float(lamports) / 1_000_000_000.0
+    except Exception:
+        return 0.0
+
 # ============================================================================-
 #  JUPITER SWAP EXECUTION ENGINE
 # ============================================================================-
@@ -139,10 +156,11 @@ def execute_solana_swap(
 ) -> dict:
     """
     Performs an automated end-to-end token swap on Solana using Jupiter and Helius/dRPC.
-    1. Fetches Routing Quote from Jupiter Quote API.
-    2. Requests Serialized Transaction from Jupiter Swap API.
-    3. Signs transaction cryptographically with local Ed25519 engine.
-    4. Broadcasts Raw Signed Transaction in parallel to Helius and dRPC.
+    1. Pre-flight check: Verifies dynamic wallet balance has enough SOL.
+    2. Fetches Routing Quote from Jupiter Quote API.
+    3. Requests Serialized Transaction from Jupiter Swap API.
+    4. Signs transaction cryptographically with local Ed25519 engine.
+    5. Broadcasts Raw Signed Transaction in parallel to Helius and dRPC.
     """
     jup_api_key = os.getenv("JUPITER_API_KEY")
     priv_key_b58 = os.getenv("SOLANA_PRIVATE_KEY")
@@ -152,6 +170,23 @@ def execute_solana_swap(
     if not priv_key_b58:
         return {"status": "error", "message": "Private key missing in .env"}
         
+    # Derive derived wallet address for execution tracking
+    raw_key = base58_decode(priv_key_b58)
+    user_wallet = base58_encode(raw_key[32:])
+    
+    # ------------------------------------------------------------------------
+    #  PRE-FLIGHT BALANCE CHECK (CONGESTION & WASTE SHIELD)
+    # ------------------------------------------------------------------------
+    if input_mint.lower() == "sol" or input_mint == "So11111111111111111111111111111111111111112":
+        live_sol = get_solana_balance(helius_url or drpc_url, user_wallet)
+        requested_sol = float(amount_lamports) / 1_000_000_000.0
+        # Include a 0.005 SOL buffer for gas fee and priority dynamic surcharge
+        if live_sol < (requested_sol + 0.005):
+            return {
+                "status": "error",
+                "message": f"Insufficient SOL balance. Wallet: {live_sol:.6f} SOL | Requested: {requested_sol:.6f} SOL (0.005 buffer required)"
+            }
+            
     # Standard SOL wrapper mint
     SOL_MINT = "So11111111111111111111111111111111111111112"
     in_mint = SOL_MINT if input_mint.lower() == "sol" else input_mint
@@ -174,10 +209,6 @@ def execute_solana_swap(
     except Exception as e:
         return {"status": "error", "message": f"Jupiter Quote call failed: {str(e)}"}
         
-    # Derive derived wallet address for execution tracking
-    raw_key = base58_decode(priv_key_b58)
-    user_wallet = base58_encode(raw_key[32:])
-    
     # ------------------------------------------------------------------------
     #  STEP 2: REQUEST SERIALIZED TRANSACTION (WITH DYNAMIC PRIORITY FEES)
     # ------------------------------------------------------------------------
