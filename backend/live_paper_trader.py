@@ -107,27 +107,45 @@ def run_live_paper_trader():
                                 highest_price = max(pos["highest_price"], current_price)
                                 pos["highest_price"] = highest_price
                                 
-                                # Calculate trailing SL price
-                                sl_price = highest_price * (1 - trailing_sl_pct)
+                                # Dynamic Step-Trailing (Trailing Tangga) & Positive BE-Guard Logic
+                                price_gain_pct = ((highest_price - entry_price) / entry_price) * 100
                                 current_pnl_pct = ((current_price - entry_price) / entry_price) * 100
                                 
-                                print(f"  [POSITION] {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | Puncak: ${highest_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}%")
+                                if price_gain_pct >= 200.0:
+                                    sl_price = highest_price * 0.75  # Mega Moonshot Trailing -25%
+                                    trail_level = "MEGA-TRAIL (-25% Peak)"
+                                elif price_gain_pct >= 100.0:
+                                    sl_price = entry_price * 1.65  # Lock +65% profit
+                                    trail_level = "STAGE 2 (+65%)"
+                                elif price_gain_pct >= 40.0:
+                                    sl_price = entry_price * 1.20  # Lock +20% profit
+                                    trail_level = "STAGE 1 (+20%)"
+                                elif price_gain_pct >= 15.0:
+                                    sl_price = entry_price * 1.03  # Positive Breakeven (+3% covers fee)
+                                    trail_level = "BE-GUARD (+3%)"
+                                else:
+                                    sl_price = highest_price * 0.90  # Normal tight trailing 10%
+                                    trail_level = "NORMAL TIGHT (10%)"
+                                    
+                                print(f"  [POSITION] {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | Puncak: ${highest_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}% | Guard: {trail_level}")
                                 
                                 # Trigger Trailing Stop Loss
                                 if current_price <= sl_price:
-                                    net_exit_value = pos["qty"] * current_price
+                                    exit_price = sl_price
+                                    net_exit_value = pos["qty"] * exit_price
                                     pnl_usd = net_exit_value - pos["net_investment"]
+                                    realized_pnl_pct = ((exit_price - entry_price) / entry_price) * 100
                                     
-                                    print(f"  [EXIT TRIGGERED] Trailing SL Terpicu untuk {pos['symbol']}!")
-                                    print(f"     => Harga Jual: ${current_price:.8f} | Realized PnL: {current_pnl_pct:+.2f}% (${pnl_usd:+.2f})")
+                                    print(f"  [EXIT TRIGGERED] {trail_level} Terpicu untuk {pos['symbol']}!")
+                                    print(f"     => Harga Jual: ${exit_price:.8f} | Realized PnL: {realized_pnl_pct:+.2f}% (${pnl_usd:+.2f})")
                                     
                                     portfolio["wallet_balance"] += net_exit_value
                                     portfolio["trade_history"].append({
                                         "symbol": pos["symbol"],
                                         "address": addr,
                                         "entry_price": entry_price,
-                                        "exit_price": current_price,
-                                        "pnl_pct": current_pnl_pct,
+                                        "exit_price": exit_price,
+                                        "pnl_pct": realized_pnl_pct,
                                         "pnl_usd": pnl_usd,
                                         "closed_at": time.strftime('%Y-%m-%d %H:%M:%S')
                                     })
