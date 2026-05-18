@@ -26,29 +26,42 @@ def audit_live_portfolio():
         print(f"[PORTFOLIO] Total Nilai Portofolio: ${wallet_balance:.4f}")
         return
         
-    # Bulk query active positions from DexScreener
+    # Load JUPITER_API_KEY from env or .env file
+    jupiter_key = os.getenv("JUPITER_API_KEY", "jup_0872d0ca9886efca00560439b283c2bc25821ab36727457792ce61ca352c2f60")
+    if not os.getenv("JUPITER_API_KEY"):
+        parent_dir = os.path.dirname(CURRENT_DIR)
+        env_path = os.path.join(parent_dir, ".env")
+        if os.path.exists(env_path):
+            with open(env_path, "r") as ef:
+                for line in ef:
+                    if "JUPITER_API_KEY" in line and "=" in line:
+                        jupiter_key = line.split("=")[-1].strip().strip('"').strip("'")
+                        break
+
+    # Bulk query active positions from Jupiter Premium Price API V3
     addr_list = list(active_positions.keys())
     addr_str = ",".join(addr_list)
-    url = f"https://api.dexscreener.com/latest/dex/tokens/{addr_str}"
+    url = f"https://api.jup.ag/price/v3?ids={addr_str}"
+    headers = {
+        "x-api-key": jupiter_key,
+        "Accept": "application/json"
+    }
     
     try:
-        r = requests.get(url, timeout=10)
+        r = requests.get(url, headers=headers, timeout=10)
         if r.status_code != 200:
-            print(f"[ERROR] Gagal memanggil API DexScreener: HTTP {r.status_code}")
+            print(f"[ERROR] Gagal memanggil API Jupiter V3: HTTP {r.status_code}")
             return
             
         res = r.json()
-        pairs = res.get("pairs", []) or []
         
         # Map latest price per token
         price_map = {}
-        for p in pairs:
-            t_addr = p.get("baseToken", {}).get("address")
-            liq = float(p.get("liquidity", {}).get("usd", 0) or 0)
-            price = float(p.get("priceUsd", 0) or 0)
-            if t_addr:
-                if t_addr not in price_map or liq > price_map[t_addr]["liq"]:
-                    price_map[t_addr] = {"price": price, "liq": liq}
+        for addr in addr_list:
+            tinfo = res.get(addr, {})
+            price = tinfo.get("usdPrice")
+            if price is not None:
+                price_map[addr] = {"price": float(price)}
                     
         print(f"[INFO] Memantau {len(active_positions)} Posisi Aktif Secara Real-Time:")
         print("-" * 80)
