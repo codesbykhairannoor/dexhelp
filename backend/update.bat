@@ -12,7 +12,7 @@ call pm2 delete all
 call pm2 flush
 
 echo [3/4] Menyalakan ulang mesin ForcePredator...
-call pm2 start main.py --name "ForcePredator"
+call pm2 start live_real_trader.py --name "ForcePredator"
 
 echo [4/4] Mengunci konfigurasi (Persistence Save)...
 call pm2 save

@@ -14,7 +14,7 @@ call pm2-startup install
 echo [3/5] Membersihkan dan Menyalakan Bot...
 call pm2 delete all
 call pm2 flush
-call pm2 start main.py --name "ForcePredator"
+call pm2 start live_real_trader.py --name "ForcePredator"
 
 echo [4/5] Mengunci Konfigurasi PM2...
 call pm2 save
