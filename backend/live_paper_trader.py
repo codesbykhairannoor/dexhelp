@@ -246,8 +246,8 @@ def run_live_paper_trader():
         except Exception as e:
             print(f"[ERROR] Loop error: {e}")
             
-        # Refresh every 60 seconds
-        time.sleep(60)
+        # High-frequency refresh every 10 seconds (matching live real-trader RTT)
+        time.sleep(10)
 
 if __name__ == "__main__":
     run_live_paper_trader()
