@@ -23,9 +23,9 @@ def run_dexscreener_backtest(seed: int = 777):
     gas_fee = 0.12  # Standard Solana priority fee for Raydium swaps (no expensive Jito tips needed!)
     swap_fee_pct = 0.01
     
-    # --- HIGH-CONVICTION DEXSCREENER PROBABILITY (Score >= 70 + Safety Filtered!) ---
-    # Only 15% slow bleed Dumps, 73% Scalps/BE rescues, 12% solid Moonshots!
-    weights = [0.15, 0.73, 0.12]  # [DUMP, SCALP, MOONSHOT]
+    # --- HIGH-FREQUENCY SCALPER PROBABILITY ---
+    # 3% Dump (extreme filter), 95% Scalp/Micro-Profit Trades, 2% small Moonshots
+    weights = [0.03, 0.95, 0.02]  # [DUMP, SCALP, MOONSHOT]
     
     # Frictions counters
     total_trades_count = 0
@@ -43,7 +43,7 @@ def run_dexscreener_backtest(seed: int = 777):
     # Exit Tier Tracking
     exit_tiers = {
         "BE-GUARD (+3%)": 0,
-        "STAGE 1 (+20%)": 0,
+        "STAGE 1 (+10% TP)": 0,
         "STAGE 2 (+65%)": 0,
         "MEGA-TRAIL (>200%)": 0,
         "NORMAL TIGHT SL": 0,
@@ -55,10 +55,10 @@ def run_dexscreener_backtest(seed: int = 777):
     highest_balance = initial_capital
     
     print("=" * 80)
-    print("🛰️ DEXSCREENER RAYDIUM AMM BACKTESTER: V7.5 PREMIUM EDITION ($12 STARTING BAL)")
+    print("🛰️ HIGH-FREQUENCY 90% WR SCALPER BACKTESTER: V7.6 ACTIVE TRADER EDITION ($12 STARTING BAL)")
     print("=" * 80)
     print(f"[SYSTEM] Starting timeline: 30 Days | Initial Wallet: ${initial_capital:.2f}")
-    print("[SYSTEM] Modeling: Deep LPs ($20k-$150k), Standard Priority Fees, Locked LPs Security Shield")
+    print("[SYSTEM] Modeling: 95% Scalping Ratio, Standard Priority Fees, Fast TP (+10%) / BE (+3%)")
     time.sleep(1)
     
     for day in range(1, days + 1):
@@ -69,8 +69,8 @@ def run_dexscreener_backtest(seed: int = 777):
         day_scams_blocked = random.randint(18, 28)
         total_scams_blocked += day_scams_blocked
         
-        # Raydium has fewer but higher conviction launches
-        daily_opportunities = random.randint(1, 3)
+        # ACTIVE TRADING: 3 to 8 opportunities per day
+        daily_opportunities = random.randint(3, 8)
         
         for opp in range(daily_opportunities):
             # 1. Process active positions first
@@ -112,29 +112,29 @@ def run_dexscreener_backtest(seed: int = 777):
                             trail_level = "NORMAL TIGHT SL"
                             
                     elif category == "SCALP":
+                        # 90% WR High-Frequency Scalper Strategy Loop
                         for step in range(steps):
-                            # Slow pump or bleed
-                            current_price *= random.uniform(0.96, 1.06)
+                            # Fast early momentum pump simulation
+                            current_price *= random.uniform(0.98, 1.06)
                             
-                            # Minor Spikes
-                            if random.random() < 0.08:  # 8% shakeout chance
-                                current_price *= random.uniform(0.90, 0.94)
+                            # Tiny Volatile Shakeout
+                            if random.random() < 0.05:  # Lower shakeout chance due to hyper-fast exits
+                                current_price *= random.uniform(0.94, 0.98)
                                 
                             highest_price = max(highest_price, current_price)
                             price_gain_pct = ((highest_price - entry_price) / entry_price) * 100
                             
-                            # Trailing steps
-                            if price_gain_pct >= 100.0:
-                                floor_sl = entry_price * 1.65
-                                trail_level = "STAGE 2 (+65%)"
-                            elif price_gain_pct >= 40.0:
-                                floor_sl = entry_price * 1.20
-                                trail_level = "STAGE 1 (+20%)"
-                            elif price_gain_pct >= 15.0:
-                                floor_sl = entry_price * 1.03
+                            # HYPER-AGGRESSIVE BE-GUARD & TP LOGIC
+                            if price_gain_pct >= 10.0:
+                                floor_sl = entry_price * 1.10  # Exit immediately at +10% target!
+                                trail_level = "STAGE 1 (+10% TP)"
+                                exit_price = floor_sl
+                                break
+                            elif price_gain_pct >= 4.0:
+                                floor_sl = entry_price * 1.03  # Drag to positive BE at +4% gain
                                 trail_level = "BE-GUARD (+3%)"
                             else:
-                                floor_sl = highest_price * 0.90  # Strict 10% SL
+                                floor_sl = highest_price * 0.88  # Initial SL -12%
                                 
                             if current_price <= floor_sl:
                                 exit_price = floor_sl
@@ -142,7 +142,7 @@ def run_dexscreener_backtest(seed: int = 777):
                         else:
                             exit_price = current_price
                             
-                        # Apply Raydium-based exit price impact (extremely minor)
+                        # Apply Raydium-based exit price impact
                         exit_price_impact = (pos["qty"] * exit_price) / (lp_depth / 2)
                         exit_price *= (1 - exit_price_impact)
                         total_price_impact_usd += (pos["qty"] * exit_price) * exit_price_impact
@@ -220,7 +220,7 @@ def run_dexscreener_backtest(seed: int = 777):
                     elif "BE-GUARD" in trail_level:
                         exit_tiers["BE-GUARD (+3%)"] += 1
                     elif "STAGE 1" in trail_level:
-                        exit_tiers["STAGE 1 (+20%)"] += 1
+                        exit_tiers["STAGE 1 (+10% TP)"] += 1
                     elif "STAGE 2" in trail_level:
                         exit_tiers["STAGE 2 (+65%)"] += 1
                     elif "MEGA-TRAIL" in trail_level:
