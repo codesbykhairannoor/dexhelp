@@ -52,15 +52,15 @@ async function runSwap() {
     }
 
     // ------------------------------------------------------------------------
-    //  STEP 1: FETCH ROUTING QUOTE
+    //  STEP 1: FETCH ROUTING QUOTE (JUPITER SWAP V2 API)
     // ------------------------------------------------------------------------
     let quoteResponse;
     try {
-        const quoteUrl = `https://api.jup.ag/swap/v1/quote?inputMint=${inMint}&outputMint=${outMint}&amount=${amountLamports}&slippageBps=${slippageBps}`;
+        const quoteUrl = `https://api.jup.ag/swap/v2/quote?inputMint=${inMint}&outputMint=${outMint}&amount=${amountLamports}&slippageBps=${slippageBps}`;
         const quoteRes = await fetch(quoteUrl, { headers });
         if (!quoteRes.ok) {
             const errText = await quoteRes.text();
-            throw new Error(`Jupiter Quote Failed (${quoteRes.status}): ${errText}`);
+            throw new Error(`Jupiter V2 Quote Failed (${quoteRes.status}): ${errText}`);
         }
         quoteResponse = await quoteRes.json();
     } catch (e) {
@@ -69,7 +69,7 @@ async function runSwap() {
     }
 
     // ------------------------------------------------------------------------
-    //  STEP 2: REQUEST SERIALIZED TRANSACTION
+    //  STEP 2: REQUEST SERIALIZED TRANSACTION (JUPITER SWAP V2 API)
     // ------------------------------------------------------------------------
     let swapTransaction;
     try {
@@ -79,10 +79,11 @@ async function runSwap() {
             wrapAndUnwrapSol: true,
             prioritizationFeeLamports: {
                 jitoTipLamports
-            }
+            },
+            dynamicComputeUnitLimit: true
         };
 
-        const swapRes = await fetch("https://api.jup.ag/swap/v1/swap", {
+        const swapRes = await fetch("https://api.jup.ag/swap/v2/swap", {
             method: "POST",
             headers,
             body: JSON.stringify(swapPayload)
@@ -90,7 +91,7 @@ async function runSwap() {
 
         if (!swapRes.ok) {
             const errText = await swapRes.text();
-            throw new Error(`Jupiter Swap Failed (${swapRes.status}): ${errText}`);
+            throw new Error(`Jupiter V2 Swap Failed (${swapRes.status}): ${errText}`);
         }
 
         const swapData = await swapRes.json();
@@ -101,7 +102,7 @@ async function runSwap() {
     }
 
     if (!swapTransaction) {
-        console.log(JSON.stringify({ status: "error", message: "No swapTransaction returned" }));
+        console.log(JSON.stringify({ status: "error", message: "No swapTransaction returned by Jupiter V2" }));
         process.exit(1);
     }
 
@@ -119,7 +120,7 @@ async function runSwap() {
     }
 
     // ------------------------------------------------------------------------
-    //  STEP 4: PARALLEL RPC BROADCAST (HELIUS + dRPC FOR ULTRAPORT TARGET DELIVERY)
+    //  STEP 4: PARALLEL RPC BROADCAST (HELIUS SENDER + dRPC)
     // ------------------------------------------------------------------------
     const serializedTx = tx.serialize();
     const rawTxBase64 = Buffer.from(serializedTx).toString('base64');
@@ -143,8 +144,24 @@ async function runSwap() {
 
     // Broadcast in parallel
     const broadcastPromises = [];
+    const heliusKey = process.env.HELIUS_API_KEY;
 
-    if (heliusUrl) {
+    if (heliusKey) {
+        const senderUrl = `https://sender.helius-rpc.com/?api-key=${heliusKey}`;
+        broadcastPromises.push(
+            fetch(senderUrl, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            })
+            .then(res => res.json())
+            .then(json => {
+                if (json.result) signatures.push(json.result);
+                else errors.push(`Helius Sender Error: ${JSON.stringify(json.error)}`);
+            })
+            .catch(e => errors.push(`Helius Sender connection error: ${e.message}`))
+        );
+    } else if (heliusUrl) {
         broadcastPromises.push(
             fetch(heliusUrl, {
                 method: "POST",

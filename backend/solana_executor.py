@@ -100,9 +100,36 @@ def sign_versioned_transaction(serialized_tx_base64: str, priv_key_b58: str) -> 
 
 def get_dynamic_priority_fee(rpc_url: str, mint_address: str) -> int:
     """
-    Queries Solana RPC getRecentPrioritizationFees for the target mint
-    to calculate a high-percentile dynamic priority fee (in micro-lamports).
+    Queries Helius getPriorityFeeEstimate first (if HELIUS_API_KEY is present)
+    with a fallback to standard getRecentPrioritizationFees.
+    Returns optimal fee in micro-lamports.
     """
+    helius_key = os.getenv("HELIUS_API_KEY")
+    if helius_key:
+        try:
+            url = f"https://mainnet.helius-rpc.com/?api-key={helius_key}"
+            payload = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "getPriorityFeeEstimate",
+                "params": [
+                    {
+                        "accountKeys": [mint_address],
+                        "options": {
+                            "recommended": True
+                        }
+                    }
+                ]
+            }
+            res = requests.post(url, json=payload, timeout=5).json()
+            estimate = res.get("result", {}).get("priorityFeeEstimate")
+            if estimate is not None:
+                optimal_fee = int(estimate)
+                # Cap optimal fee between 50k and 2.5m micro-lamports for protection
+                return max(50000, min(2500000, optimal_fee))
+        except Exception as e:
+            print(f"[CONGESTION SHIELD WARN] Helius Priority Fee Estimate failed: {e}. Falling back to standard RPC.", flush=True)
+
     if not rpc_url:
         return 150000 # Fallback: 150k micro-lamports
     try:
@@ -144,7 +171,7 @@ def get_solana_balance(rpc_url: str, wallet_address: str) -> float:
         return 0.0
 
 # ============================================================================-
-#  JUPITER SWAP EXECUTION ENGINE
+#  JUPITER SWAP EXECUTION ENGINE V2
 # ============================================================================-
 
 def execute_solana_swap(
@@ -155,17 +182,18 @@ def execute_solana_swap(
     jito_tip_lamports: int = 1000000
 ) -> dict:
     """
-    Performs an automated end-to-end token swap on Solana using Jupiter and Helius/dRPC.
+    Performs an automated end-to-end token swap on Solana using Jupiter API V2 and Helius/dRPC.
     1. Pre-flight check: Verifies dynamic wallet balance has enough SOL.
-    2. Fetches Routing Quote from Jupiter Quote API.
-    3. Requests Serialized Transaction from Jupiter Swap API.
+    2. Fetches Routing Quote from Jupiter Quote V2 API.
+    3. Requests Serialized Transaction from Jupiter Swap V2 API.
     4. Signs transaction cryptographically with local Ed25519 engine.
-    5. Broadcasts Raw Signed Transaction in parallel to Helius and dRPC.
+    5. Broadcasts Raw Signed Transaction in parallel to Helius Sender Endpoint and dRPC.
     """
     jup_api_key = os.getenv("JUPITER_API_KEY")
     priv_key_b58 = os.getenv("SOLANA_PRIVATE_KEY")
     helius_url = os.getenv("SOLANA_RPC_HELIUS")
     drpc_url = os.getenv("SOLANA_RPC_DRPC")
+    helius_key = os.getenv("HELIUS_API_KEY")
     
     if not priv_key_b58:
         return {"status": "error", "message": "Private key missing in .env"}
@@ -198,13 +226,13 @@ def execute_solana_swap(
     } if jup_api_key else {"Content-Type": "application/json"}
     
     # ------------------------------------------------------------------------
-    #  STEP 1: FETCH ROUTING QUOTE
+    #  STEP 1: FETCH ROUTING QUOTE (JUPITER SWAP V2 API)
     # ------------------------------------------------------------------------
     try:
-        quote_url = f"https://api.jup.ag/swap/v1/quote?inputMint={in_mint}&outputMint={out_mint}&amount={amount_lamports}&slippageBps={slippage_bps}"
+        quote_url = f"https://api.jup.ag/swap/v2/quote?inputMint={in_mint}&outputMint={out_mint}&amount={amount_lamports}&slippageBps={slippage_bps}"
         r = requests.get(quote_url, headers=headers, timeout=10)
         if r.status_code != 200:
-            return {"status": "error", "message": f"Jupiter Quote failed (Code:{r.status_code}): {r.text}"}
+            return {"status": "error", "message": f"Jupiter V2 Quote failed (Code:{r.status_code}): {r.text}"}
         quote_res = r.json()
         
         # V13.0 Price Impact Pre-Evaluation (Zero-Slippage Shield)
@@ -215,15 +243,12 @@ def execute_solana_swap(
                 "message": f"High Price Impact aborted: {price_impact:.2f}% (max 2.0% allowed to prevent slippage losses)"
             }
     except Exception as e:
-        return {"status": "error", "message": f"Jupiter Quote call failed: {str(e)}"}
+        return {"status": "error", "message": f"Jupiter V2 Quote call failed: {str(e)}"}
         
     # ------------------------------------------------------------------------
-    #  STEP 2: REQUEST SERIALIZED TRANSACTION (WITH DYNAMIC PRIORITY FEES)
+    #  STEP 2: REQUEST SERIALIZED TRANSACTION (WITH JITO TIP & DYNAMIC COMPUTE UNIT)
     # ------------------------------------------------------------------------
     try:
-        # Calculate dynamic prioritization fee based on current network congestion
-        dynamic_priority_fee = get_dynamic_priority_fee(helius_url or drpc_url, out_mint)
-        
         swap_payload = {
             "quoteResponse": quote_res,
             "userPublicKey": user_wallet,
@@ -235,16 +260,16 @@ def execute_solana_swap(
             "dynamicComputeUnitLimit": True
         }
         
-        r = requests.post("https://api.jup.ag/swap/v1/swap", headers=headers, json=swap_payload, timeout=10)
+        r = requests.post("https://api.jup.ag/swap/v2/swap", headers=headers, json=swap_payload, timeout=10)
         if r.status_code != 200:
-            return {"status": "error", "message": f"Jupiter Swap Payload failed (Code:{r.status_code}): {r.text}"}
+            return {"status": "error", "message": f"Jupiter V2 Swap Payload failed (Code:{r.status_code}): {r.text}"}
         swap_res = r.json()
         serialized_tx = swap_res.get("swapTransaction")
     except Exception as e:
-        return {"status": "error", "message": f"Jupiter Swap call failed: {str(e)}"}
+        return {"status": "error", "message": f"Jupiter V2 Swap call failed: {str(e)}"}
         
     if not serialized_tx:
-        return {"status": "error", "message": "No swapTransaction returned by Jupiter API"}
+        return {"status": "error", "message": "No swapTransaction returned by Jupiter V2 API"}
         
     # ------------------------------------------------------------------------
     #  STEP 3: CRYPTOGRAPHICALLY SIGN TRANSACTION (LOCAL MEMORY)
@@ -289,7 +314,7 @@ def execute_solana_swap(
         print(f"[SIMULATION SHIELD WARN] Pre-flight simulation failed: {str(e)}. Falling back to blind skipPreflight broadcast.", flush=True)
         
     # ------------------------------------------------------------------------
-    #  STEP 4: PARALLEL RPC BROADCAST (HELIUS + dRPC FOR ULTRAPORT CONFIRMATION)
+    #  STEP 4: PARALLEL RPC BROADCAST (HELIUS SENDER ENDPOINT + dRPC)
     # ------------------------------------------------------------------------
     rpc_payload = {
         "jsonrpc": "2.0",
@@ -308,8 +333,19 @@ def execute_solana_swap(
     broadcast_errors = []
     signatures = []
     
-    # Broadcast to Helius
-    if helius_url:
+    # Broadcast to high-performance Helius Sender Endpoint
+    if helius_key:
+        try:
+            sender_url = f"https://sender.helius-rpc.com/?api-key={helius_key}"
+            res = requests.post(sender_url, json=rpc_payload, timeout=5).json()
+            if "result" in res:
+                signatures.append(res["result"])
+            else:
+                broadcast_errors.append(f"Helius Sender error: {res.get('error')}")
+        except Exception as e:
+            broadcast_errors.append(f"Helius Sender broadcast failed: {str(e)}")
+    elif helius_url:
+        # Fallback to standard Helius RPC if key is missing
         try:
             res = requests.post(helius_url, json=rpc_payload, timeout=5).json()
             if "result" in res:
