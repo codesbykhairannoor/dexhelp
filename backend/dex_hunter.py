@@ -1,4 +1,6 @@
 import os
+import json
+import websocket
 import requests
 import time
 import threading
@@ -367,14 +369,17 @@ def _fetch_candidates() -> list:
     global _verified_profiles, _boost_tracker
     candidates = {}
     
+    profiles_list = []
+    takeovers_list = []
+
     # 1. Update Verified Profiles, Community Takeovers & Trending Metas
     try:
         profile_url = "https://api.dexscreener.com/token-profiles/latest/v1"
         res = requests.get(profile_url, timeout=5)
         if res.status_code == 200:
-            profiles = res.json()
-            if isinstance(profiles, list):
-                _verified_profiles = {p.get("tokenAddress") for p in profiles if p.get("tokenAddress")}
+            profiles_list = res.json()
+            if isinstance(profiles_list, list):
+                _verified_profiles = {p.get("tokenAddress") for p in profiles_list if p.get("tokenAddress")}
     except Exception as e:
         print(f"[DEX HUNTER] Profile list fetch failed: {e}")
 
@@ -384,9 +389,9 @@ def _fetch_candidates() -> list:
         takeover_url = "https://api.dexscreener.com/community-takeovers/latest/v1"
         res = requests.get(takeover_url, timeout=5)
         if res.status_code == 200:
-            takeovers = res.json()
-            if isinstance(takeovers, list):
-                _community_takeover_tokens = {t.get("tokenAddress") for t in takeovers if t.get("tokenAddress")}
+            takeovers_list = res.json()
+            if isinstance(takeovers_list, list):
+                _community_takeover_tokens = {t.get("tokenAddress") for t in takeovers_list if t.get("tokenAddress")}
     except Exception as e:
         print(f"[DEX HUNTER] Community takeover fetch failed: {e}")
 
@@ -409,6 +414,7 @@ def _fetch_candidates() -> list:
     
     addresses_to_scan = []
     
+    # Golden Funnel A: Extract from Token Boosts
     for url in boost_urls:
         try:
             res = requests.get(url, timeout=10)
@@ -420,14 +426,39 @@ def _fetch_candidates() -> list:
                         if chain_id in DEX_CHAINS:
                             addr = b.get("tokenAddress")
                             if addr:
-                                _boost_tracker[addr] = int(b.get("amount", 0) or 0)
+                                # V13.1 GOLDEN FACT: Use totalAmount representing cumulative boost weight (viral factor)
+                                _boost_tracker[addr] = int(b.get("totalAmount", 0) or b.get("amount", 0) or 0)
                                 if (chain_id, addr) not in addresses_to_scan:
                                     addresses_to_scan.append((chain_id, addr))
         except Exception as e:
             print(f"[DEX HUNTER] Boost fetch failed: {e}")
             
-    # Limit to 60 addresses to maximize candidate pool
-    addresses_to_scan = list({(c, a) for c, a in addresses_to_scan})[:60]
+    # Golden Funnel B: Inject Token Profiles to addresses_to_scan
+    try:
+        if isinstance(profiles_list, list):
+            for p in profiles_list:
+                chain_id = p.get("chainId", "").lower()
+                if chain_id in DEX_CHAINS:
+                    addr = p.get("tokenAddress")
+                    if addr and (chain_id, addr) not in addresses_to_scan:
+                        addresses_to_scan.append((chain_id, addr))
+    except Exception:
+        pass
+
+    # Golden Funnel C: Inject Community Takeovers to addresses_to_scan
+    try:
+        if isinstance(takeovers_list, list):
+            for t in takeovers_list:
+                chain_id = t.get("chainId", "").lower()
+                if chain_id in DEX_CHAINS:
+                    addr = t.get("tokenAddress")
+                    if addr and (chain_id, addr) not in addresses_to_scan:
+                        addresses_to_scan.append((chain_id, addr))
+    except Exception:
+        pass
+
+    # Limit to 80 addresses to maximize candidate pool
+    addresses_to_scan = list({(c, a) for c, a in addresses_to_scan})[:80]
     
     # 3. Fetch full pair details & run Multi-Pool Liquidity Aggregator
     for chain_id, addr in addresses_to_scan:
@@ -614,22 +645,96 @@ def _scan_pipeline():
 #  PUBLIC API & LIFECYCLE MANAGEMENT
 # ============================================================================-
 
+# ============================================================================-
+#  HYBRID WEBSOCKET STREAM CLIENT
+# ============================================================================-
+_ws_threads = []
+
+def _on_ws_message(ws, message):
+    try:
+        payload = json.loads(message)
+        data = payload.get("data", [])
+        if not isinstance(data, list):
+            return
+            
+        for item in data:
+            chain_id = item.get("chainId", "").lower()
+            token_addr = item.get("tokenAddress")
+            if chain_id in DEX_CHAINS and token_addr:
+                # Fast-track check in background thread to avoid blocking WS loop
+                threading.Thread(target=_process_websocket_token, args=(chain_id, token_addr), daemon=True).start()
+    except Exception:
+        pass
+
+def _process_websocket_token(chain, address):
+    global _scanned_gems
+    try:
+        # Check if already scanned recently to avoid redundancy
+        with _scan_lock:
+            if any(g["address"] == address for g in _scanned_gems):
+                return
+                
+        # Perform instant security & grading scan
+        gem = scan_custom_token(chain, address)
+        if isinstance(gem, dict) and gem.get("predator_score", 0) >= 65: # Score threshold
+            with _scan_lock:
+                # Prevent duplication again
+                if not any(g["address"] == address for g in _scanned_gems):
+                    _scanned_gems.insert(0, gem)
+                    _scanned_gems = _scanned_gems[:100] # Cap size
+                    print(f"🔥 [WEBSOCKET FAST-TRACK] Captured high-momentum token: {gem.get('symbol', 'UNKNOWN')} | Score: {gem['predator_score']}", flush=True)
+    except Exception:
+        pass
+
+def _run_websocket_client(url):
+    global _is_running
+    while _is_running:
+        try:
+            ws = websocket.WebSocketApp(
+                url,
+                on_message=_on_ws_message,
+                on_error=lambda ws, err: None,
+                on_close=lambda ws, close_status_code, close_msg: None
+            )
+            ws.run_forever()
+        except Exception:
+            pass
+        time.sleep(5) # Reconnect delay
+
+# ============================================================================-
+#  PUBLIC API & LIFECYCLE MANAGEMENT
+# ============================================================================-
+
 def start_dex_hunter():
-    """Starts the DexScreener Gem Finder scanning daemon."""
-    global _is_running, _scan_thread
+    """Starts the DexScreener Gem Finder scanning daemon with Hybrid WebSocket streams."""
+    global _is_running, _scan_thread, _ws_threads
     if _is_running:
         return
         
     _is_running = True
+    
+    # 1. Start Polling Loop
     _scan_thread = threading.Thread(target=_scan_pipeline, daemon=True, name="DexPredator")
     _scan_thread.start()
-    print("[DEXSCREENER PREDATOR] Scanner Daemon started successfully.", flush=True)
+    
+    # 2. Start Real-time WebSocket Stream Listeners
+    ws_urls = [
+        "wss://api.dexscreener.com/token-profiles/recent-updates/v1",
+        "wss://api.dexscreener.com/token-boosts/latest/v1"
+    ]
+    _ws_threads = []
+    for url in ws_urls:
+        t = threading.Thread(target=_run_websocket_client, args=(url,), daemon=True)
+        t.start()
+        _ws_threads.append(t)
+        
+    print("[DEXSCREENER PREDATOR] Scanner Daemon & Hybrid WebSocket Listeners started successfully.", flush=True)
 
 def stop_dex_hunter():
-    """Gracefully shuts down the scanning daemon."""
+    """Gracefully shuts down the scanning daemon and WebSocket listeners."""
     global _is_running
     _is_running = False
-    print("[DEXSCREENER PREDATOR] Scanner Daemon stopped.", flush=True)
+    print("[DEXSCREENER PREDATOR] Scanner Daemon & WebSocket Listeners stopped.", flush=True)
 
 def get_scanned_gems() -> list:
     """Returns the globally audited and ranked gems list."""
