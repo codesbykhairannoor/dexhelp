@@ -57,10 +57,10 @@ def run_live_paper_trader():
     print("[INFO] Token Cooldown Shield  : 24 Hours (86,400s) Blacklist on Exit")
     print("=" * 80)
     
-    # Costs per trade (Gas + Swap fee + Slippage)
-    gas_fee = 0.12
-    swap_fee_pct = 0.01
-    slippage_pct = 0.02
+    # Costs per trade (Gas + Swap fee + Slippage) - Aligned with real Solana AMM metrics for $10 size
+    gas_fee = 0.01          # Real Solana priority fee is ~$0.008 USD
+    swap_fee_pct = 0.0025   # Raydium Standard Pool Fee is 0.25%
+    slippage_pct = 0.005    # Actual slippage for $10 order in $20k pool is < 0.5%
     
     while True:
         try:
@@ -209,9 +209,7 @@ def run_live_paper_trader():
                             if portfolio["wallet_balance"] >= trade_allocation:
                                 cost_per_trade = gas_fee + (trade_allocation * swap_fee_pct) + (trade_allocation * slippage_pct)
                                 net_investment = trade_allocation - cost_per_trade
-                                
-                                # Deduct 2% virtual slippage compensation for realistic metrics
-                                qty = (net_investment / gem["price"]) * 0.98
+                                qty = net_investment / gem["price"]
                                 
                                 # Add new position
                                 active_positions[addr] = {
