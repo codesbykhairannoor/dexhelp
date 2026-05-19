@@ -427,8 +427,20 @@ def _fetch_candidates() -> list:
             aggregated_liquidity = sum(float(p.get("liquidity", {}).get("usd", 0) or 0) for p in chain_pairs)
             mcap = float(primary_p.get("marketCap", 0) or 0)
             
-            # Basic sanity filters using aggregated liquidity
-            if aggregated_liquidity >= MIN_LIQUIDITY_USD and mcap >= MIN_MCAP_USD and mcap <= MAX_MCAP_USD:
+            # V13.0 L/MC Ratio Calculation & Filtering
+            l_mc_ratio = (aggregated_liquidity / mcap) if mcap > 0 else 0
+            
+            # V13.0 Buy/Sell Transaction Velocity Ratio (BS-Ratio)
+            tx_5m = primary_p.get("txns", {}).get("m5", {})
+            buys = int(tx_5m.get("buys", 0))
+            sells = int(tx_5m.get("sells", 0))
+            bs_ratio = (buys / (buys + sells)) if (buys + sells) > 0 else 0.50
+            
+            # Apply strict V13.0 Quantitative Filters
+            if (aggregated_liquidity >= MIN_LIQUIDITY_USD and 
+                mcap >= MIN_MCAP_USD and mcap <= MAX_MCAP_USD and
+                0.08 <= l_mc_ratio <= 0.25 and
+                bs_ratio >= 0.65):
                 candidates[addr] = {
                     "chain": chain_id,
                     "pair_address": primary_p.get("pairAddress", ""),
@@ -474,11 +486,22 @@ def _fetch_candidates() -> list:
                 addr = p.get("baseToken", {}).get("address", "")
                 if not addr or addr in candidates:
                     continue
-                    
                 liq = float(p.get("liquidity", {}).get("usd", 0) or 0)
                 mcap = float(p.get("marketCap", 0) or 0)
                 
-                if addr and liq >= MIN_LIQUIDITY_USD and mcap >= MIN_MCAP_USD and mcap <= MAX_MCAP_USD:
+                # V13.0 L/MC Ratio Calculation & Filtering
+                l_mc_ratio = (liq / mcap) if mcap > 0 else 0
+                
+                # V13.0 Buy/Sell Transaction Velocity Ratio (BS-Ratio)
+                tx_5m = p.get("txns", {}).get("m5", {})
+                buys = int(tx_5m.get("buys", 0))
+                sells = int(tx_5m.get("sells", 0))
+                bs_ratio = (buys / (buys + sells)) if (buys + sells) > 0 else 0.50
+                
+                if (addr and liq >= MIN_LIQUIDITY_USD and 
+                    mcap >= MIN_MCAP_USD and mcap <= MAX_MCAP_USD and
+                    0.08 <= l_mc_ratio <= 0.25 and
+                    bs_ratio >= 0.65):
                     age_sec = int(time.time() - (float(p.get("pairCreatedAt", 0)) / 1000)) if p.get("pairCreatedAt") else 3600
                     candidates[addr] = {
                         "chain": chain_id,

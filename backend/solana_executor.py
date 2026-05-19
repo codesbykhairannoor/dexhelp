@@ -206,6 +206,14 @@ def execute_solana_swap(
         if r.status_code != 200:
             return {"status": "error", "message": f"Jupiter Quote failed (Code:{r.status_code}): {r.text}"}
         quote_res = r.json()
+        
+        # V13.0 Price Impact Pre-Evaluation (Zero-Slippage Shield)
+        price_impact = float(quote_res.get("priceImpactPct", 0) or 0)
+        if price_impact > 2.0:
+            return {
+                "status": "error",
+                "message": f"High Price Impact aborted: {price_impact:.2f}% (max 2.0% allowed to prevent slippage losses)"
+            }
     except Exception as e:
         return {"status": "error", "message": f"Jupiter Quote call failed: {str(e)}"}
         
