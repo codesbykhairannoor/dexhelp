@@ -26,9 +26,9 @@ def load_portfolio() -> dict:
                 return data
         except Exception:
             pass
-    # Initialize with requested $12 starting capital
+    # Initialize with requested $1000 starting capital
     return {
-        "wallet_balance": 12.00,   # Reset to requested $12 starting balance!
+        "wallet_balance": 1000.00,  # Reset to requested $1000 starting balance!
         "active_positions": {},    # token_address -> trade_info
         "trade_history": [],       # List of completed simulated trades
         "cooldowns": {}            # token_address -> epoch_timestamp_when_cooldown_ends
@@ -45,9 +45,9 @@ def run_live_paper_trader():
     portfolio = load_portfolio()
     
     print("=" * 80)
-    print("[SYSTEM] SOLANA DEX PREDATOR - LIVE PAPER TRADING ENGINE (PRODUCTION V8.0)")
+    print("[SYSTEM] SOLANA DEX PREDATOR - LIVE PAPER TRADING ENGINE (PRODUCTION V8.5)")
     print(f"[INFO] Virtual Wallet Balance : ${portfolio['wallet_balance']:.2f}")
-    print("[INFO] Max Active Trades      : 2 Concurrent Positions Limit")
+    print("[INFO] Max Active Trades      : 10 Concurrent Positions Limit")
     print("[INFO] Target Take-Profit (TP): +10.0% (Instant Exit)")
     print("[INFO] Breakeven Guard (BE)  : Lock +3.0% when price hits +4.0%")
     print("[INFO] Initial Stop Loss (SL) : -12.0% (Tight Protection)")
@@ -169,9 +169,9 @@ def run_live_paper_trader():
                 print("[INFO] Portofolio Posisi Aktif: KOSONG.")
                 
             # --- PHASE 2: SCAN FOR NEW PREMIUM OPPORTUNITIES ---
-            # Strict limit check: Max 2 active trades
-            if len(active_positions) >= 2:
-                print(f"[SCAN] Limit 2 posisi aktif terisi ({len(active_positions)}/2). Mengabaikan scan koin baru.")
+            # Strict limit check: Max 10 active trades
+            if len(active_positions) >= 10:
+                print(f"[SCAN] Limit 10 posisi aktif terisi ({len(active_positions)}/10). Mengabaikan scan koin baru.")
             else:
                 candidates = _fetch_candidates()
                 if candidates:
@@ -209,8 +209,8 @@ def run_live_paper_trader():
                     if best_candidate:
                         addr = best_candidate["address"]
                         
-                        # Dynamic sizing: 30% of current virtual wallet balance
-                        trade_allocation = portfolio["wallet_balance"] * 0.30
+                        # Fixed sizing: $10.00 flat margin per trade as requested by user
+                        trade_allocation = 10.00
                         
                         if portfolio["wallet_balance"] >= trade_allocation and trade_allocation > 0.5:
                             cost_per_trade = gas_fee + (trade_allocation * swap_fee_pct) + (trade_allocation * slippage_pct)
