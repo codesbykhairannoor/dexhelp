@@ -247,6 +247,40 @@ def execute_solana_swap(
         return {"status": "error", "message": f"Local cryptographic signing failed: {str(e)}"}
         
     # ------------------------------------------------------------------------
+    #  STEP 3.5: PRE-EXECUTION SIMULATION SHIELD (ANTI-RUG & ANTI-FAILURE)
+    # ------------------------------------------------------------------------
+    try:
+        rpc_endpoint = helius_url or drpc_url
+        if rpc_endpoint:
+            sim_payload = {
+                "jsonrpc": "2.0",
+                "id": 1,
+                "method": "simulateTransaction",
+                "params": [
+                    signed_tx_base64,
+                    {"encoding": "base64"}
+                ]
+            }
+            sim_res = requests.post(rpc_endpoint, json=sim_payload, timeout=5).json()
+            sim_result = sim_res.get("result", {}).get("value", {})
+            
+            if sim_result.get("err"):
+                logs = sim_result.get("logs", [])
+                error_msg = f"Simulation failed with error: {sim_result['err']}"
+                for log in reversed(logs):
+                    if "Slippage" in log or "Custom" in log:
+                        error_msg = f"Simulation Slippage Violation: {log}"
+                        break
+                return {
+                    "status": "error",
+                    "message": f"[SIMULATION SHIELD] Swap aborted to protect capital! Reason: {error_msg}"
+                }
+            else:
+                print(f"[SIMULATION SHIELD] Swap passed simulation successfully! dynamic CU: {sim_result.get('unitsConsumed', 0)}", flush=True)
+    except Exception as e:
+        print(f"[SIMULATION SHIELD WARN] Pre-flight simulation failed: {str(e)}. Falling back to blind skipPreflight broadcast.", flush=True)
+        
+    # ------------------------------------------------------------------------
     #  STEP 4: PARALLEL RPC BROADCAST (HELIUS + dRPC FOR ULTRAPORT CONFIRMATION)
     # ------------------------------------------------------------------------
     rpc_payload = {
