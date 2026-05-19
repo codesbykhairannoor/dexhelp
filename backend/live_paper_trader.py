@@ -23,12 +23,15 @@ def load_portfolio() -> dict:
                 data = json.load(f)
                 if "cooldowns" not in data:
                     data["cooldowns"] = {}
+                if "initial_capital" not in data:
+                    data["initial_capital"] = data.get("wallet_balance", 1000.00)
                 return data
         except Exception:
             pass
     # Initialize with requested $1000 starting capital
     return {
-        "wallet_balance": 1000.00,  # Reset to requested $1000 starting balance!
+        "wallet_balance": 1000.00,
+        "initial_capital": 1000.00,
         "active_positions": {},    # token_address -> trade_info
         "trade_history": [],       # List of completed simulated trades
         "cooldowns": {}            # token_address -> epoch_timestamp_when_cooldown_ends
@@ -45,7 +48,7 @@ def run_live_paper_trader():
     portfolio = load_portfolio()
     
     print("=" * 80)
-    print("[SYSTEM] SOLANA DEX PREDATOR - LIVE PAPER TRADING ENGINE (PRODUCTION V8.5)")
+    print("[SYSTEM] SOLANA DEX PREDATOR - LIVE PAPER TRADING ENGINE (PRODUCTION V8.6)")
     print(f"[INFO] Virtual Wallet Balance : ${portfolio['wallet_balance']:.2f}")
     print("[INFO] Max Active Trades      : 10 Concurrent Positions Limit")
     print("[INFO] Target Take-Profit (TP): +10.0% (Instant Exit)")
@@ -137,8 +140,11 @@ def run_live_paper_trader():
                                 if current_price <= sl_price or price_gain_pct >= 10.0:
                                     exit_price = current_price if price_gain_pct >= 10.0 else sl_price
                                     net_exit_value = pos["qty"] * exit_price
-                                    pnl_usd = net_exit_value - pos["net_investment"]
-                                    realized_pnl_pct = ((exit_price - entry_price) / entry_price) * 100
+                                    
+                                    # Use gross_investment if available, fallback to net_investment
+                                    gross_inv = pos.get("gross_investment", pos["net_investment"])
+                                    pnl_usd = net_exit_value - gross_inv
+                                    realized_pnl_pct = (pnl_usd / gross_inv) * 100
                                     
                                     print(f"  [EXIT TRIGGERED] {trail_level} Terpicu untuk {pos['symbol']}!")
                                     print(f"     => Harga Jual: ${exit_price:.8f} | Realized PnL: {realized_pnl_pct:+.2f}% (${pnl_usd:+.2f})")
@@ -176,22 +182,20 @@ def run_live_paper_trader():
                 candidates = _fetch_candidates()
                 if candidates:
                     candidates.sort(key=lambda x: x.get("volume_5m", 0), reverse=True)
-                    top_candidates = candidates[:5]
                     
-                    best_candidate = None
-                    best_score = 0
-                    
-                    for gem in top_candidates:
+                    # V8.6 High-throughput optimization: Loop through ALL candidates (not just top 5)
+                    # and buy as many passing candidates as possible in a single cycle up to 10 positions!
+                    for gem in candidates:
+                        if len(active_positions) >= 10:
+                            break
+                            
                         addr = gem["address"]
                         if addr in active_positions:
                             continue
                             
                         # Strict 24-hour Cooldown filter check
                         if "cooldowns" in portfolio and addr in portfolio["cooldowns"]:
-                            cooldown_left = int(portfolio["cooldowns"][addr] - time.time())
-                            if cooldown_left > 0:
-                                print(f"  [SCAN] Mengabaikan {gem['symbol']} | Masih dalam Cooldown 24 Jam ({cooldown_left}s tersisa)")
-                                continue
+                            continue
                             
                         security = check_token_security(gem["chain"], addr)
                         score = calculate_gem_score(gem, security)
@@ -199,45 +203,36 @@ def run_live_paper_trader():
                         print(f"  [SCAN] Analisis {gem['symbol']} | Safety: {security['status']} | Score: {score}/100")
                         
                         if security["status"] in ["CLEAN & SAFE", "WARNINGS"] and score >= 70:
-                            if score > best_score:
-                                best_score = score
-                                best_candidate = gem
-                                best_candidate["security_status"] = security["status"]
-                                best_candidate["predator_score"] = score
+                            # Fixed sizing: $10.00 flat margin per trade as requested by user
+                            trade_allocation = 10.00
+                            
+                            if portfolio["wallet_balance"] >= trade_allocation:
+                                cost_per_trade = gas_fee + (trade_allocation * swap_fee_pct) + (trade_allocation * slippage_pct)
+                                net_investment = trade_allocation - cost_per_trade
                                 
-                    # --- PHASE 3: EXECUTE AUTO VIRTUAL BUY ---
-                    if best_candidate:
-                        addr = best_candidate["address"]
-                        
-                        # Fixed sizing: $10.00 flat margin per trade as requested by user
-                        trade_allocation = 10.00
-                        
-                        if portfolio["wallet_balance"] >= trade_allocation and trade_allocation > 0.5:
-                            cost_per_trade = gas_fee + (trade_allocation * swap_fee_pct) + (trade_allocation * slippage_pct)
-                            net_investment = trade_allocation - cost_per_trade
-                            
-                            # Deduct 2% virtual slippage compensation for realistic metrics
-                            qty = (net_investment / best_candidate["price"]) * 0.98
-                            
-                            # Add new position
-                            active_positions[addr] = {
-                                "symbol": best_candidate["symbol"],
-                                "name": best_candidate["name"],
-                                "entry_price": best_candidate["price"],
-                                "highest_price": best_candidate["price"],
-                                "net_investment": net_investment,
-                                "qty": qty,
-                                "entry_time": time.strftime('%Y-%m-%d %H:%M:%S')
-                            }
-                            
-                            portfolio["wallet_balance"] -= trade_allocation
-                            closed_any = True
-                            
-                            print(f"\n[BUY EXECUTED] Membeli {best_candidate['symbol']}!")
-                            print(f"   => Harga Entry: ${best_candidate['price']:.8f} | Alokasi (30%): ${trade_allocation:.2f} (Net: ${net_investment:.2f})")
-                            print(f"   => Score: {best_candidate['predator_score']}/100 | Initial SL: ${best_candidate['price']*(1-0.12):.8f}")
-                        else:
-                            print(f"\n[SCAN] Dana tidak cukup untuk membeli {best_candidate['symbol']}. Saldo: ${portfolio['wallet_balance']:.2f}")
+                                # Deduct 2% virtual slippage compensation for realistic metrics
+                                qty = (net_investment / gem["price"]) * 0.98
+                                
+                                # Add new position
+                                active_positions[addr] = {
+                                    "symbol": gem["symbol"],
+                                    "name": gem["name"],
+                                    "entry_price": gem["price"],
+                                    "highest_price": gem["price"],
+                                    "gross_investment": trade_allocation,
+                                    "net_investment": net_investment,
+                                    "qty": qty,
+                                    "entry_time": time.strftime('%Y-%m-%d %H:%M:%S')
+                                }
+                                
+                                portfolio["wallet_balance"] -= trade_allocation
+                                closed_any = True
+                                
+                                print(f"\n[BUY EXECUTED] Membeli {gem['symbol']}!")
+                                print(f"   => Harga Entry: ${gem['price']:.8f} | Alokasi: ${trade_allocation:.2f} (Net: ${net_investment:.2f})")
+                                print(f"   => Score: {score}/100 | Initial SL: ${gem['price']*(1-0.12):.8f}")
+                            else:
+                                print(f"\n[SCAN] Dana tidak cukup untuk membeli {gem['symbol']}. Saldo: ${portfolio['wallet_balance']:.2f}")
             
             if closed_any:
                 save_portfolio(portfolio)

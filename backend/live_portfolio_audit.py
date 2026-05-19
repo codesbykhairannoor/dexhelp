@@ -94,11 +94,8 @@ def audit_live_portfolio():
             
         total_portfolio_value = wallet_balance + total_active_value
         
-        # Dynamic Quant Reconstruction: Reconstruct starting capital from trade history
-        total_history_pnl = sum(t.get("pnl_usd", 0.0) for t in portfolio.get("trade_history", []))
-        initial_capital = total_portfolio_value - total_history_pnl
-        if initial_capital <= 0:
-            initial_capital = 12.00  # Fallback to $12 starting capital
+        # Read starting capital directly from JSON state to avoid dynamic math discrepancies
+        initial_capital = portfolio.get("initial_capital", 1000.00)
             
         net_portfolio_pnl_usd = total_portfolio_value - initial_capital
         net_portfolio_pnl_pct = (net_portfolio_pnl_usd / initial_capital) * 100 if initial_capital > 0 else 0.0
