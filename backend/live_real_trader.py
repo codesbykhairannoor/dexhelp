@@ -140,16 +140,13 @@ def run_live_real_trader():
                                 price_gain_pct = ((highest_price - entry_price) / entry_price) * 100
                                 current_pnl_pct = ((current_price - entry_price) / entry_price) * 100
                                 
-                                # HYPER-AGGRESSIVE BE-GUARD & TP MATH
+                                # V9.0 OPTIMAL SCALPER PARAMETERS (BE-GUARD INACTIVE, SL 20%)
                                 if price_gain_pct >= 10.0:
                                     sl_price = entry_price * 1.10  # Exit immediately at +10% target!
                                     trail_level = "STAGE 1 (+10% TP)"
-                                elif price_gain_pct >= 4.0:
-                                    sl_price = entry_price * 1.03  # Drag to positive BE at +4% gain
-                                    trail_level = "BE-GUARD (+3%)"
                                 else:
-                                    sl_price = highest_price * 0.88  # Initial SL -12%
-                                    trail_level = "NORMAL TIGHT (12%)"
+                                    sl_price = highest_price * 0.80  # Stop Loss 20% from peak
+                                    trail_level = "TRAILING SL (20%)"
                                     
                                 print(f"  [TRACKING] {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}% | Guard: {trail_level}", flush=True)
                                 
