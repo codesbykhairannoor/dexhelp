@@ -401,8 +401,8 @@ def _fetch_candidates() -> list:
         except Exception as e:
             print(f"[DEX HUNTER] Boost fetch failed: {e}")
             
-    # Limit to 30 addresses to avoid rate limits
-    addresses_to_scan = addresses_to_scan[:30]
+    # Limit to 60 addresses to maximize candidate pool
+    addresses_to_scan = list({(c, a) for c, a in addresses_to_scan})[:60]
     
     # 3. Fetch full pair details & run Multi-Pool Liquidity Aggregator
     for chain_id, addr in addresses_to_scan:
@@ -454,45 +454,56 @@ def _fetch_candidates() -> list:
         except Exception as e:
             pass
 
-    # Fallback search if boosts are empty
-    if not candidates:
-        for query in ["pump", "pepe", "doge"]:
-            try:
-                url = f"https://api.dexscreener.com/latest/dex/search?q={query}"
-                res = requests.get(url, timeout=10).json()
-                pairs = res.get("pairs", []) or []
+    # EXPANDED MULTI-SOURCE SEARCH (Always run, not just as fallback)
+    # 12 targeted queries to massively widen the candidate funnel
+    SEARCH_QUERIES = [
+        "solana", "pump", "pepe", "doge", "moon", "ape",
+        "meme", "cat", "dog", "ai", "based", "new"
+    ]
+    for query in SEARCH_QUERIES:
+        try:
+            url = f"https://api.dexscreener.com/latest/dex/search?q={query}"
+            res = requests.get(url, timeout=10).json()
+            pairs = res.get("pairs", []) or []
+            
+            for p in pairs:
+                chain_id = p.get("chainId", "").lower()
+                if chain_id not in DEX_CHAINS:
+                    continue
                 
-                for p in pairs:
-                    chain_id = p.get("chainId", "").lower()
-                    if chain_id not in DEX_CHAINS:
-                        continue
+                addr = p.get("baseToken", {}).get("address", "")
+                if not addr or addr in candidates:
+                    continue
                     
-                    addr = p.get("baseToken", {}).get("address", "")
-                    liq = float(p.get("liquidity", {}).get("usd", 0) or 0)
-                    mcap = float(p.get("marketCap", 0) or 0)
-                    
-                    if addr and liq >= MIN_LIQUIDITY_USD and mcap >= MIN_MCAP_USD and mcap <= MAX_MCAP_USD:
-                        candidates[addr] = {
-                            "chain": chain_id,
-                            "pair_address": p.get("pairAddress", ""),
-                            "symbol": p.get("baseToken", {}).get("symbol", "UNKNOWN"),
-                            "name": p.get("baseToken", {}).get("name", "UNKNOWN"),
-                            "address": addr,
-                            "price": float(p.get("priceUsd", 0) or 0),
-                            "volume_5m": float(p.get("volume", {}).get("m5", 0) or 0),
-                            "volume_1h": float(p.get("volume", {}).get("h1", 0) or 0),
-                            "liquidity": liq,
-                            "market_cap": mcap,
-                            "price_change_5m": float(p.get("priceChange", {}).get("m5", 0) or 0),
-                            "price_change_1h": float(p.get("priceChange", {}).get("h1", 0) or 0),
-                            "txns": p.get("txns", {}),
-                            "info": p.get("info", {}),
-                            "url": p.get("url", ""),
-                            "boost_amount": 0,
-                            "age_estimate_sec": int(time.time() - (float(p.get("pairCreatedAt", 0)) / 1000)) if p.get("pairCreatedAt") else 300
-                        }
-            except Exception:
-                pass
+                liq = float(p.get("liquidity", {}).get("usd", 0) or 0)
+                mcap = float(p.get("marketCap", 0) or 0)
+                
+                if addr and liq >= MIN_LIQUIDITY_USD and mcap >= MIN_MCAP_USD and mcap <= MAX_MCAP_USD:
+                    age_sec = int(time.time() - (float(p.get("pairCreatedAt", 0)) / 1000)) if p.get("pairCreatedAt") else 3600
+                    candidates[addr] = {
+                        "chain": chain_id,
+                        "pair_address": p.get("pairAddress", ""),
+                        "symbol": p.get("baseToken", {}).get("symbol", "UNKNOWN"),
+                        "name": p.get("baseToken", {}).get("name", "UNKNOWN"),
+                        "address": addr,
+                        "price": float(p.get("priceUsd", 0) or 0),
+                        "volume_5m": float(p.get("volume", {}).get("m5", 0) or 0),
+                        "volume_1h": float(p.get("volume", {}).get("h1", 0) or 0),
+                        "volume_24h": float(p.get("volume", {}).get("h24", 0) or 0),
+                        "liquidity": liq,
+                        "market_cap": mcap,
+                        "fdv": float(p.get("fdv", 0) or 0),
+                        "price_change_5m": float(p.get("priceChange", {}).get("m5", 0) or 0),
+                        "price_change_1h": float(p.get("priceChange", {}).get("h1", 0) or 0),
+                        "txns": p.get("txns", {}),
+                        "info": p.get("info", {}),
+                        "url": p.get("url", ""),
+                        "boost_amount": _boost_tracker.get(addr, 0),
+                        "boosts_active": int(p.get("boosts", {}).get("active", 0) or 0),
+                        "age_estimate_sec": age_sec
+                    }
+        except Exception:
+            pass
                 
     return list(candidates.values())
 

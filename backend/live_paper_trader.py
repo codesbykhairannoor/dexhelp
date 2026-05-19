@@ -78,14 +78,15 @@ def run_live_paper_trader():
     portfolio = load_portfolio()
     
     print("=" * 80)
-    print("[SYSTEM] SOLANA DEX PREDATOR - LIVE PAPER TRADING ENGINE (PRODUCTION V8.8)")
+    print("[SYSTEM] SOLANA DEX PREDATOR - LIVE PAPER TRADING ENGINE (V11.0 HIGH-FREQ)")
     print(f"[INFO] Virtual Wallet Balance : ${portfolio['wallet_balance']:.2f}")
     print("[INFO] Max Active Trades      : 10 Concurrent Positions Limit")
-    print("[INFO] Target Take-Profit (TP): +10.0% (Instant Exit)")
-    print("[INFO] Breakeven Guard (BE)  : Lock +3.0% when price hits +4.0%")
-    print("[INFO] Initial Stop Loss (SL) : -12.0% (Tight Protection)")
-    print("[INFO] Token Cooldown Shield  : 24 Hours (86,400s) Blacklist on Exit")
-    print("=" * 80)
+    print("[INFO] Target Take-Profit (TP): +30.0% (Let winners run)")
+    print("[INFO] BE-Guard               : ACTIVE - Lock +3% when hit +4%")
+    print("[INFO] Initial Stop Loss (SL) : -20.0% from peak (Trailing)")
+    print("[INFO] Cooldown Shield        : 4 Hours (14,400s) per token")
+    print("[INFO] Scan Cycle             : Every 5 seconds (High-Frequency)")
+    print("="* 80)
     
     # Costs per trade (Gas + Swap fee + Slippage) - Aligned with real Solana AMM metrics for $10 size
     gas_fee = 0.01          # Real Solana priority fee is ~$0.008 USD
@@ -182,8 +183,7 @@ def run_live_paper_trader():
                                     print(f"  [EXIT TRIGGERED] {trail_level} Terpicu untuk {pos['symbol']}!")
                                     print(f"     => Harga Jual: ${exit_price:.8f} | Realized PnL: {realized_pnl_pct:+.2f}% (${pnl_usd:+.2f})")
                                     
-                                    # Persist cooldown for 24 Hours (86,400 seconds) to prevent re-entries
-                                    portfolio.setdefault("cooldowns", {})[addr] = time.time() + 86400
+                                    portfolio.setdefault("cooldowns", {})[addr] = time.time() + 14400  # 4 Hour cooldown
                                     print(f"     => [SHIELD] Alamat {addr} masuk daftar Cooldown 24 Jam.")
                                     
                                     portfolio["wallet_balance"] += net_exit_value
@@ -216,7 +216,6 @@ def run_live_paper_trader():
                 if candidates:
                     candidates.sort(key=lambda x: x.get("volume_5m", 0), reverse=True)
                     
-                    # Loop through ALL candidates and buy dynamically
                     for gem in candidates:
                         if len(active_positions) >= 10:
                             break
@@ -225,16 +224,15 @@ def run_live_paper_trader():
                         if addr in active_positions:
                             continue
                             
-                        # Strict 24-hour Cooldown filter check
                         if "cooldowns" in portfolio and addr in portfolio["cooldowns"]:
                             continue
                             
                         security = check_token_security(gem["chain"], addr)
                         score = calculate_gem_score(gem, security)
                         
-                        print(f"  [SCAN] Analisis {gem['symbol']} | Safety: {security['status']} | Score: {score}/100")
+                        print(f"  [SCAN] {gem['symbol']} | Safety: {security['status']} | Score: {score}/100 | Age: {gem.get('age_estimate_sec',0)//60}m")
                         
-                        if security["status"] in ["CLEAN & SAFE", "WARNINGS"] and score >= 70:
+                        if security["status"] in ["CLEAN & SAFE", "WARNINGS"] and score >= 65:
                             # Fixed sizing: $10.00 flat margin per trade
                             trade_allocation = 10.00
                             
@@ -273,8 +271,8 @@ def run_live_paper_trader():
         except Exception as e:
             print(f"[ERROR] Loop error: {e}")
             
-        # High-frequency refresh every 10 seconds
-        time.sleep(10)
+        # High-frequency refresh every 5 seconds
+        time.sleep(5)
 
 if __name__ == "__main__":
     run_live_paper_trader()
