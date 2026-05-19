@@ -63,7 +63,7 @@ def run_evaluation_dashboard():
             if r.status_code == 200:
                 res = r.json()
                 for addr in tokens_to_query:
-                    tinfo = res.get(addr, {})
+                    tinfo = res.get("data", {}).get(addr, {})
                     price = tinfo.get("usdPrice")
                     if price is not None:
                         price_map[addr] = float(price)

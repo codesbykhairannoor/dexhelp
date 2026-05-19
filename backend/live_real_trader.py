@@ -124,7 +124,7 @@ def run_live_real_trader():
                         res = r.json()
                         price_map = {}
                         for addr in addr_list:
-                            tinfo = res.get(addr, {})
+                            tinfo = res.get("data", {}).get(addr, {})
                             price = tinfo.get("usdPrice")
                             if price is not None:
                                 price_map[addr] = {"price": float(price)}

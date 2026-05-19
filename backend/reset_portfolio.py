@@ -11,9 +11,13 @@ if hasattr(sys.stdout, 'reconfigure'):
 
 def reset_portfolio():
     CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-    PORTFOLIO_FILE = os.path.join(CURRENT_DIR, "paper_portfolio.json")
     
+    target = "paper"
+    if len(sys.argv) > 1:
+        target = sys.argv[1].lower()
+        
     clean_state = {
+        "wallet_address": "",
         "wallet_balance": 1000.0,
         "initial_capital": 1000.0,
         "active_positions": {},
@@ -21,16 +25,35 @@ def reset_portfolio():
         "cooldowns": {}
     }
     
-    try:
-        with open(PORTFOLIO_FILE, "w") as f:
-            json.dump(clean_state, f, indent=4)
-        print("=" * 80)
-        print("🗑️  DATABASE PORTFOLIO BERHASIL DIRESET!")
-        print("   Semua riwayat transaksi lama dihapus.")
-        print("   Modal dikembalikan murni ke $1,000.00 USD.")
-        print("=" * 80)
-    except Exception as e:
-        print(f"[ERROR] Gagal mereset database: {e}")
+    targets = []
+    if target == "paper" or target == "all":
+        targets.append(("paper_portfolio.json", "PAPER PORTFOLIO (SIMULATOR)"))
+    if target == "live" or target == "all":
+        targets.append(("live_portfolio.json", "LIVE PORTFOLIO (REAL MONEY)"))
+        
+    if not targets:
+        print(f"[ERROR] Target reset tidak dikenal: '{target}'. Gunakan: 'paper', 'live', atau 'all'")
+        return
+        
+    print("=" * 80)
+    for filename, label in targets:
+        filepath = os.path.join(CURRENT_DIR, filename)
+        
+        # Reset balance for live portfolio dynamically from onchain wallet if exists
+        state_to_write = clean_state.copy()
+        if filename == "live_portfolio.json":
+            # For live portfolio, balance will be dynamically updated by trading engine
+            state_to_write["wallet_balance"] = 0.0
+            state_to_write["initial_capital"] = 0.0
+            
+        try:
+            with open(filepath, "w") as f:
+                json.dump(state_to_write, f, indent=4)
+            print(f"🗑️  DATABASE {label} BERHASIL DIRESET!")
+            print(f"   Semua riwayat transaksi lama pada {filename} telah dihapus.")
+        except Exception as e:
+            print(f"[ERROR] Gagal mereset {label}: {e}")
+    print("=" * 80)
 
 if __name__ == "__main__":
     reset_portfolio()

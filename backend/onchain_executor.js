@@ -193,6 +193,26 @@ async function runSwap() {
         );
     }
 
+    if (jupApiKey) {
+        const executePayload = {
+            transaction: rawTxBase64
+        };
+        broadcastPromises.push(
+            fetch("https://api.jup.ag/swap/v2/execute", {
+                method: "POST",
+                headers,
+                body: JSON.stringify(executePayload)
+            })
+            .then(res => res.json())
+            .then(json => {
+                const txid = json.signature || json.txid;
+                if (txid) signatures.push(txid);
+                else errors.push(`Jupiter Execute Error: ${JSON.stringify(json)}`);
+            })
+            .catch(e => errors.push(`Jupiter Execute connection error: ${e.message}`))
+        );
+    }
+
     await Promise.all(broadcastPromises);
 
     if (signatures.length === 0) {

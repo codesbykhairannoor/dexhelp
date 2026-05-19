@@ -366,6 +366,24 @@ def execute_solana_swap(
         except Exception as e:
             broadcast_errors.append(f"dRPC broadcast failed: {str(e)}")
             
+    # Broadcast to Jupiter Swap V2 Execute API (Managed Landing Engine)
+    if jup_api_key:
+        try:
+            exec_payload = {
+                "transaction": signed_tx_base64
+            }
+            res = requests.post("https://api.jup.ag/swap/v2/execute", headers=headers, json=exec_payload, timeout=5)
+            if res.status_code == 200:
+                exec_res = res.json()
+                # V2 execute response typically returns signature / txid
+                txid = exec_res.get("signature") or exec_res.get("txid")
+                if txid:
+                    signatures.append(txid)
+            else:
+                broadcast_errors.append(f"Jupiter Execute failed (Code:{res.status_code}): {res.text}")
+        except Exception as e:
+            broadcast_errors.append(f"Jupiter Execute broadcast failed: {str(e)}")
+            
     if not signatures:
         return {
             "status": "error",
