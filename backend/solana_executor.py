@@ -226,13 +226,13 @@ def execute_solana_swap(
     } if jup_api_key else {"Content-Type": "application/json"}
     
     # ------------------------------------------------------------------------
-    #  STEP 1: FETCH ROUTING QUOTE (JUPITER SWAP V2 API)
+    #  STEP 1: FETCH ROUTING QUOTE (JUPITER SWAP V1 API)
     # ------------------------------------------------------------------------
     try:
-        quote_url = f"https://api.jup.ag/swap/v2/quote?inputMint={in_mint}&outputMint={out_mint}&amount={amount_lamports}&slippageBps={slippage_bps}"
+        quote_url = f"https://api.jup.ag/swap/v1/quote?inputMint={in_mint}&outputMint={out_mint}&amount={amount_lamports}&slippageBps={slippage_bps}"
         r = requests.get(quote_url, headers=headers, timeout=10)
         if r.status_code != 200:
-            return {"status": "error", "message": f"Jupiter V2 Quote failed (Code:{r.status_code}): {r.text}"}
+            return {"status": "error", "message": f"Jupiter V1 Quote failed (Code:{r.status_code}): {r.text}"}
         quote_res = r.json()
         
         # V13.0 Price Impact Pre-Evaluation (Zero-Slippage Shield)
@@ -243,7 +243,7 @@ def execute_solana_swap(
                 "message": f"High Price Impact aborted: {price_impact:.2f}% (max 2.0% allowed to prevent slippage losses)"
             }
     except Exception as e:
-        return {"status": "error", "message": f"Jupiter V2 Quote call failed: {str(e)}"}
+        return {"status": "error", "message": f"Jupiter V1 Quote call failed: {str(e)}"}
         
     # ------------------------------------------------------------------------
     #  STEP 2: REQUEST SERIALIZED TRANSACTION (WITH JITO TIP & DYNAMIC COMPUTE UNIT)
@@ -260,16 +260,16 @@ def execute_solana_swap(
             "dynamicComputeUnitLimit": True
         }
         
-        r = requests.post("https://api.jup.ag/swap/v2/swap", headers=headers, json=swap_payload, timeout=10)
+        r = requests.post("https://api.jup.ag/swap/v1/swap", headers=headers, json=swap_payload, timeout=10)
         if r.status_code != 200:
-            return {"status": "error", "message": f"Jupiter V2 Swap Payload failed (Code:{r.status_code}): {r.text}"}
+            return {"status": "error", "message": f"Jupiter V1 Swap Payload failed (Code:{r.status_code}): {r.text}"}
         swap_res = r.json()
         serialized_tx = swap_res.get("swapTransaction")
     except Exception as e:
-        return {"status": "error", "message": f"Jupiter V2 Swap call failed: {str(e)}"}
+        return {"status": "error", "message": f"Jupiter V1 Swap call failed: {str(e)}"}
         
     if not serialized_tx:
-        return {"status": "error", "message": "No swapTransaction returned by Jupiter V2 API"}
+        return {"status": "error", "message": "No swapTransaction returned by Jupiter V1 API"}
         
     # ------------------------------------------------------------------------
     #  STEP 3: CRYPTOGRAPHICALLY SIGN TRANSACTION (LOCAL MEMORY)
@@ -366,16 +366,15 @@ def execute_solana_swap(
         except Exception as e:
             broadcast_errors.append(f"dRPC broadcast failed: {str(e)}")
             
-    # Broadcast to Jupiter Swap V2 Execute API (Managed Landing Engine)
+    # Broadcast to Jupiter Swap V1 Execute API (Managed Landing Engine)
     if jup_api_key:
         try:
             exec_payload = {
                 "transaction": signed_tx_base64
             }
-            res = requests.post("https://api.jup.ag/swap/v2/execute", headers=headers, json=exec_payload, timeout=5)
+            res = requests.post("https://api.jup.ag/swap/v1/execute", headers=headers, json=exec_payload, timeout=5)
             if res.status_code == 200:
                 exec_res = res.json()
-                # V2 execute response typically returns signature / txid
                 txid = exec_res.get("signature") or exec_res.get("txid")
                 if txid:
                     signatures.append(txid)

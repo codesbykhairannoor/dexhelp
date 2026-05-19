@@ -52,15 +52,15 @@ async function runSwap() {
     }
 
     // ------------------------------------------------------------------------
-    //  STEP 1: FETCH ROUTING QUOTE (JUPITER SWAP V2 API)
+    //  STEP 1: FETCH ROUTING QUOTE (JUPITER SWAP V1 API)
     // ------------------------------------------------------------------------
     let quoteResponse;
     try {
-        const quoteUrl = `https://api.jup.ag/swap/v2/quote?inputMint=${inMint}&outputMint=${outMint}&amount=${amountLamports}&slippageBps=${slippageBps}`;
+        const quoteUrl = `https://api.jup.ag/swap/v1/quote?inputMint=${inMint}&outputMint=${outMint}&amount=${amountLamports}&slippageBps=${slippageBps}`;
         const quoteRes = await fetch(quoteUrl, { headers });
         if (!quoteRes.ok) {
             const errText = await quoteRes.text();
-            throw new Error(`Jupiter V2 Quote Failed (${quoteRes.status}): ${errText}`);
+            throw new Error(`Jupiter V1 Quote Failed (${quoteRes.status}): ${errText}`);
         }
         quoteResponse = await quoteRes.json();
     } catch (e) {
@@ -69,7 +69,7 @@ async function runSwap() {
     }
 
     // ------------------------------------------------------------------------
-    //  STEP 2: REQUEST SERIALIZED TRANSACTION (JUPITER SWAP V2 API)
+    //  STEP 2: REQUEST SERIALIZED TRANSACTION (JUPITER SWAP V1 API)
     // ------------------------------------------------------------------------
     let swapTransaction;
     try {
@@ -83,7 +83,7 @@ async function runSwap() {
             dynamicComputeUnitLimit: true
         };
 
-        const swapRes = await fetch("https://api.jup.ag/swap/v2/swap", {
+        const swapRes = await fetch("https://api.jup.ag/swap/v1/swap", {
             method: "POST",
             headers,
             body: JSON.stringify(swapPayload)
@@ -91,7 +91,7 @@ async function runSwap() {
 
         if (!swapRes.ok) {
             const errText = await swapRes.text();
-            throw new Error(`Jupiter V2 Swap Failed (${swapRes.status}): ${errText}`);
+            throw new Error(`Jupiter V1 Swap Failed (${swapRes.status}): ${errText}`);
         }
 
         const swapData = await swapRes.json();
@@ -102,7 +102,7 @@ async function runSwap() {
     }
 
     if (!swapTransaction) {
-        console.log(JSON.stringify({ status: "error", message: "No swapTransaction returned by Jupiter V2" }));
+        console.log(JSON.stringify({ status: "error", message: "No swapTransaction returned by Jupiter V1" }));
         process.exit(1);
     }
 
@@ -198,7 +198,7 @@ async function runSwap() {
             transaction: rawTxBase64
         };
         broadcastPromises.push(
-            fetch("https://api.jup.ag/swap/v2/execute", {
+            fetch("https://api.jup.ag/swap/v1/execute", {
                 method: "POST",
                 headers,
                 body: JSON.stringify(executePayload)
