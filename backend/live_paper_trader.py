@@ -17,25 +17,55 @@ CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
 PORTFOLIO_FILE = os.path.join(CURRENT_DIR, "paper_portfolio.json")
 
 def load_portfolio() -> dict:
-    if os.path.exists(PORTFOLIO_FILE):
-        try:
-            with open(PORTFOLIO_FILE, "r") as f:
-                data = json.load(f)
-                if "cooldowns" not in data:
-                    data["cooldowns"] = {}
-                if "initial_capital" not in data:
-                    data["initial_capital"] = data.get("wallet_balance", 1000.00)
-                return data
-        except Exception:
-            pass
-    # Initialize with requested $1000 starting capital
-    return {
+    default_portfolio = {
         "wallet_balance": 1000.00,
         "initial_capital": 1000.00,
         "active_positions": {},    # token_address -> trade_info
         "trade_history": [],       # List of completed simulated trades
         "cooldowns": {}            # token_address -> epoch_timestamp_when_cooldown_ends
     }
+    
+    if os.path.exists(PORTFOLIO_FILE):
+        try:
+            with open(PORTFOLIO_FILE, "r") as f:
+                data = json.load(f)
+                
+                # --- AUTO-MIGRATION & REPAIR SHIELD ---
+                dirty = False
+                if "cooldowns" not in data:
+                    data["cooldowns"] = {}
+                    dirty = True
+                if "initial_capital" not in data:
+                    data["initial_capital"] = data.get("wallet_balance", 1000.00)
+                    dirty = True
+                if "active_positions" not in data:
+                    data["active_positions"] = {}
+                    dirty = True
+                if "trade_history" not in data:
+                    data["trade_history"] = []
+                    dirty = True
+                    
+                # Fix old active positions format dynamically
+                for addr, pos in data["active_positions"].items():
+                    if "gross_investment" not in pos:
+                        pos["gross_investment"] = pos.get("net_investment", 10.00)
+                        dirty = True
+                        
+                if dirty:
+                    with open(PORTFOLIO_FILE, "w") as fw:
+                        json.dump(data, fw, indent=4)
+                        
+                return data
+        except Exception:
+            pass
+            
+    # Save default if not existing
+    try:
+        with open(PORTFOLIO_FILE, "w") as f:
+            json.dump(default_portfolio, f, indent=4)
+    except Exception:
+        pass
+    return default_portfolio
 
 def save_portfolio(portfolio: dict):
     try:
@@ -48,7 +78,7 @@ def run_live_paper_trader():
     portfolio = load_portfolio()
     
     print("=" * 80)
-    print("[SYSTEM] SOLANA DEX PREDATOR - LIVE PAPER TRADING ENGINE (PRODUCTION V8.6)")
+    print("[SYSTEM] SOLANA DEX PREDATOR - LIVE PAPER TRADING ENGINE (PRODUCTION V8.8)")
     print(f"[INFO] Virtual Wallet Balance : ${portfolio['wallet_balance']:.2f}")
     print("[INFO] Max Active Trades      : 10 Concurrent Positions Limit")
     print("[INFO] Target Take-Profit (TP): +10.0% (Instant Exit)")
@@ -67,6 +97,9 @@ def run_live_paper_trader():
             print("\n" + "-" * 80)
             print(f"[SCAN CYCLE] {time.strftime('%Y-%m-%d %H:%M:%S')} | Mengaudit pasar live...")
             print("-" * 80)
+            
+            # Refresh portfolio parameters dynamically without losing trade history
+            portfolio = load_portfolio()
             
             # Clean up expired cooldowns to keep state small & clean
             current_time = time.time()
@@ -183,8 +216,7 @@ def run_live_paper_trader():
                 if candidates:
                     candidates.sort(key=lambda x: x.get("volume_5m", 0), reverse=True)
                     
-                    # V8.6 High-throughput optimization: Loop through ALL candidates (not just top 5)
-                    # and buy as many passing candidates as possible in a single cycle up to 10 positions!
+                    # Loop through ALL candidates and buy dynamically
                     for gem in candidates:
                         if len(active_positions) >= 10:
                             break
@@ -203,12 +235,14 @@ def run_live_paper_trader():
                         print(f"  [SCAN] Analisis {gem['symbol']} | Safety: {security['status']} | Score: {score}/100")
                         
                         if security["status"] in ["CLEAN & SAFE", "WARNINGS"] and score >= 70:
-                            # Fixed sizing: $10.00 flat margin per trade as requested by user
+                            # Fixed sizing: $10.00 flat margin per trade
                             trade_allocation = 10.00
                             
                             if portfolio["wallet_balance"] >= trade_allocation:
                                 cost_per_trade = gas_fee + (trade_allocation * swap_fee_pct) + (trade_allocation * slippage_pct)
                                 net_investment = trade_allocation - cost_per_trade
+                                
+                                # Aligned with standard AMM math
                                 qty = net_investment / gem["price"]
                                 
                                 # Add new position
@@ -239,7 +273,7 @@ def run_live_paper_trader():
         except Exception as e:
             print(f"[ERROR] Loop error: {e}")
             
-        # High-frequency refresh every 10 seconds (matching live real-trader RTT)
+        # High-frequency refresh every 10 seconds
         time.sleep(10)
 
 if __name__ == "__main__":
