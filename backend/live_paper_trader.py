@@ -156,10 +156,13 @@ def run_live_paper_trader():
                                 price_gain_pct = ((highest_price - entry_price) / entry_price) * 100
                                 current_pnl_pct = ((current_price - entry_price) / entry_price) * 100
                                 
-                                # V9.0 OPTIMAL SCALPER PARAMETERS (BE-GUARD INACTIVE, SL 20%)
-                                if price_gain_pct >= 10.0:
-                                    sl_price = entry_price * 1.10  # Exit immediately at +10% target!
-                                    trail_level = "STAGE 1 (+10% TP)"
+                                # V9.1 OPTIMAL REAL-WORLD PARAMETERS (BE-GUARD ACTIVE, SL 20%, TP 30%)
+                                if price_gain_pct >= 30.0:
+                                    sl_price = entry_price * 1.30  # Exit immediately at +30% target!
+                                    trail_level = "STAGE 1 (+30% TP)"
+                                elif price_gain_pct >= 4.0:
+                                    sl_price = entry_price * 1.03  # Drag to positive BE at +4% gain
+                                    trail_level = "BE-GUARD (+3%)"
                                 else:
                                     sl_price = highest_price * 0.80  # Stop Loss 20% from peak
                                     trail_level = "TRAILING SL (20%)"
@@ -167,8 +170,8 @@ def run_live_paper_trader():
                                 print(f"  [POSITION] {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | Puncak: ${highest_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}% | Guard: {trail_level}")
                                 
                                 # Trigger Trailing Stop Loss or Take Profit
-                                if current_price <= sl_price or price_gain_pct >= 10.0:
-                                    exit_price = current_price if price_gain_pct >= 10.0 else sl_price
+                                if current_price <= sl_price or price_gain_pct >= 30.0:
+                                    exit_price = current_price if price_gain_pct >= 30.0 else sl_price
                                     net_exit_value = pos["qty"] * exit_price
                                     
                                     # Use gross_investment if available, fallback to net_investment

@@ -102,7 +102,7 @@ def run_evaluation_dashboard():
     
     # Render dashboard
     print("=" * 80)
-    print("🛰️  SOLANA DEX PREDATOR - LIVE PERFORMANCE EVALUATION DASHBOARD V8.6")
+    print("🛰️  SOLANA DEX PREDATOR - LIVE PERFORMANCE EVALUATION DASHBOARD V9.1")
     print("=" * 80)
     
     # Section 1: Wallet Performance Summary
