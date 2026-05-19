@@ -1,3 +1,4 @@
+import os
 import requests
 import time
 import threading
@@ -120,6 +121,30 @@ def check_token_security(chain: str, address: str) -> dict:
                         score_impact += 10  # Healthy distributed ownership
         except Exception:
             pass
+
+        # Lapis 4: Solscan Pro API V2.0 Audit (Premium Forensic Fallback)
+        solscan_api_key = os.getenv("SOLSCAN_API_KEY")
+        if solscan_api_key:
+            try:
+                solscan_url = f"https://pro-api.solscan.io/v2.0/token/meta?address={address}"
+                s_headers = {"token": solscan_api_key, "Accept": "application/json"}
+                sr = requests.get(solscan_url, headers=s_headers, timeout=5)
+                if sr.status_code == 200:
+                    sdata = sr.json()
+                    if sdata.get("success") is True and sdata.get("data"):
+                        t_meta = sdata["data"]
+                        mint_auth = t_meta.get("mint_authority")
+                        freeze_auth = t_meta.get("freeze_authority")
+                        
+                        # Block if mint or freeze authority is active (not null/empty)
+                        if mint_auth is not None and mint_auth != "":
+                            flags.append("SOLSCAN_MINTABLE_DANGER")
+                            is_safe = False
+                        if freeze_auth is not None and freeze_auth != "":
+                            flags.append("SOLSCAN_FREEZABLE_DANGER")
+                            is_safe = False
+            except Exception:
+                pass
 
     # ------------------------------------------------------------------------
     #  EVM SECURITY STACK (Honeypot.is + GoPlus Security)
