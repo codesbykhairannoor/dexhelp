@@ -44,18 +44,25 @@ def run_evaluation_dashboard():
                         jupiter_key = line.split("=")[-1].strip().strip('"').strip("'")
                         break
                         
-    # Fetch live prices for active positions
+    # Gather tokens to fetch: active tokens + last 10 closed tokens for Post-Exit Audit
+    tokens_to_query = list(active_positions.keys())
+    closed_audit_list = trade_history[-10:]
+    for t in closed_audit_list:
+        addr = t.get("address")
+        if addr and addr not in tokens_to_query:
+            tokens_to_query.append(addr)
+            
+    # Fetch live prices for selected tokens
     price_map = {}
-    if active_positions:
-        addr_list = list(active_positions.keys())
-        addr_str = ",".join(addr_list)
+    if tokens_to_query:
+        addr_str = ",".join(tokens_to_query)
         url = f"https://api.jup.ag/price/v3?ids={addr_str}"
         headers = {"x-api-key": jupiter_key, "Accept": "application/json"}
         try:
             r = requests.get(url, headers=headers, timeout=5)
             if r.status_code == 200:
                 res = r.json()
-                for addr in addr_list:
+                for addr in tokens_to_query:
                     tinfo = res.get(addr, {})
                     price = tinfo.get("usdPrice")
                     if price is not None:
@@ -92,18 +99,15 @@ def run_evaluation_dashboard():
     net_pnl_pct = (net_pnl_usd / initial_capital) * 100 if initial_capital > 0 else 0.0
     
     # Win rate analytics
-    wins = [t for t in trade_history if t.get("pnl_usd", 0) >= 0]
-    losses = [t for t in trade_history if t.get("pnl_usd", 0) < 0]
+    wins = [t for t in trade_history if t.get("pnl_usd", 0) >= 0 or t.get("pnl_sol", 0) >= 0]
+    losses = [t for t in trade_history if t.get("pnl_usd", 0) < 0 or t.get("pnl_sol", 0) < 0]
     total_closed_trades = len(trade_history)
     win_rate = (len(wins) / total_closed_trades * 100) if total_closed_trades > 0 else 0.0
     
-    avg_win = sum(t.get("pnl_usd", 0) for t in wins) / len(wins) if wins else 0.0
-    avg_loss = sum(t.get("pnl_usd", 0) for t in losses) / len(losses) if losses else 0.0
-    
     # Render dashboard
-    print("=" * 80)
-    print("🛰️  SOLANA DEX PREDATOR - LIVE PERFORMANCE EVALUATION DASHBOARD V9.1")
-    print("=" * 80)
+    print("=" * 110)
+    print("🛰️  SOLANA DEX PREDATOR - LIVE PERFORMANCE EVALUATION DASHBOARD V13.0 AUDIT")
+    print("=" * 110)
     
     # Section 1: Wallet Performance Summary
     print("[1] RINGKASAN PORTOFOLIO:")
@@ -112,39 +116,61 @@ def run_evaluation_dashboard():
     print(f"    Nilai Aset Aktif    : ${total_active_value:,.4f} USD")
     print(f"    TOTAL NILAI PORTO   : ${total_portfolio_value:,.4f} USD")
     print(f"    Akumulasi PnL Neto  : {net_pnl_pct:+.2f}% ({net_pnl_usd:+.2f} USD)")
-    print("-" * 80)
+    print("-" * 110)
     
     # Section 2: Active Positions Table
     print(f"[2] POSISI AKTIF YANG SEDANG DIPANTAU ({len(active_positions_list)}/10):")
     if active_positions_list:
         print(f"    {'SYMBOL':<10} | {'INVESTED':<10} | {'ENTRY PRICE':<12} | {'LIVE PRICE':<12} | {'PnL %':<10} | {'PnL USD'}")
-        print("    " + "-" * 72)
+        print("    " + "-" * 100)
         for pos in active_positions_list:
             print(f"    {pos['symbol']:<10} | ${pos['invested']:<9.2f} | ${pos['entry_price']:<11.8f} | ${pos['current_price']:<11.8f} | {pos['pnl_pct']:+.2f}% | {pos['pnl_usd']:+.2f} USD")
     else:
         print("    (Tidak ada posisi aktif saat ini)")
-    print("-" * 80)
+    print("-" * 110)
     
-    # Section 3: Closed Trades History Table
-    print(f"[3] RIWAYAT TRANSAKSI CLOSED ({total_closed_trades} Trades):")
+    # Section 3: Closed Trades History Table + Post-Exit Audit
+    print(f"[3] RIWAYAT CLOSED TRADES & POST-EXIT AUDIT (10 Transaksi Terakhir):")
     if trade_history:
-        print(f"    {'SYMBOL':<10} | {'ENTRY PRICE':<12} | {'EXIT PRICE':<12} | {'PnL %':<10} | {'PnL USD':<10} | {'CLOSED TIME'}")
-        print("    " + "-" * 72)
-        # Show last 10 trades for cleaner view
-        for t in trade_history[-10:]:
-            print(f"    {t['symbol']:<10} | ${t['entry_price']:<11.8f} | ${t['exit_price']:<11.8f} | {t['pnl_pct']:+.2f}% | {t['pnl_usd']:+.2f} USD | {t['closed_at']}")
+        print(f"    {'SYMBOL':<10} | {'ENTRY':<11} | {'EXIT':<11} | {'PnL %':<8} | {'LIVE NOW':<11} | {'POST-CHG %':<10} | {'AUDIT EVALUATION'}")
+        print("    " + "-" * 100)
+        
+        for t in closed_audit_list:
+            addr = t.get("address")
+            exit_price = t["exit_price"]
+            live_price = price_map.get(addr, 0.0)
+            
+            pnl_pct = t.get("pnl_pct")
+            # Fallback if pnl_pct is not recorded in SOL trades
+            if pnl_pct is None:
+                pnl_pct = float(t.get("pnl_sol", 0.0)) * 100.0 # Estimate
+                
+            post_exit_chg = 0.0
+            audit_eval = "⏱️ NO DATA"
+            
+            if live_price > 0 and exit_price > 0:
+                post_exit_chg = ((live_price - exit_price) / exit_price) * 100
+                if post_exit_chg <= -20.0:
+                    audit_eval = f"🛡️ GOOD EXIT (Dump {post_exit_chg:+.1f}%)"
+                elif post_exit_chg >= 50.0:
+                    audit_eval = f"⚠️ MISSED PUMP ({post_exit_chg:+.1f}%)"
+                else:
+                    audit_eval = "✅ ACCURATE EXIT"
+            elif exit_price > 0:
+                audit_eval = "💀 RUGGED/DELISTED (0.00)"
+                
+            print(f"    {t['symbol']:<10} | ${t['entry_price']:<10.8f} | ${exit_price:<10.8f} | {pnl_pct:+.2f}% | ${live_price:<10.8f} | {post_exit_chg:+.2f}% | {audit_eval}")
+            
         if len(trade_history) > 10:
             print(f"    ... dan {len(trade_history) - 10} transaksi lama lainnya.")
     else:
         print("    (Belum ada transaksi selesai)")
-    print("-" * 80)
+    print("-" * 110)
     
     # Section 4: Quant Win/Loss Analytics
     print("[4] ANALISIS STATISTIK PRESTASI TRADING:")
     print(f"    Tingkat Kemenangan (Win Rate) : {win_rate:.1f}% ({len(wins)} Menang / {len(losses)} Kalah)")
-    print(f"    Rata-rata Profit (Per Win)    : {avg_win:+.2f} USD")
-    print(f"    Rata-rata Kerugian (Per Loss) : {avg_loss:+.2f} USD")
-    print("-" * 80)
+    print("-" * 110)
     
     # Section 5: Cooldown Shield Tracker
     print("[5] DAFTAR SHIELD COOLDOWN YANG AKTIF:")
@@ -165,7 +191,7 @@ def run_evaluation_dashboard():
         print("    " + ", ".join(active_cooldowns))
     else:
         print("    (Semua koin bersih dari cooldown, scanner bebas menyisir!)")
-    print("=" * 80)
+    print("=" * 110)
 
 if __name__ == "__main__":
     run_evaluation_dashboard()
