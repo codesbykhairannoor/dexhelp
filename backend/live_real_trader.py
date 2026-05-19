@@ -4,6 +4,12 @@ import time
 import json
 import requests
 from dotenv import load_dotenv
+
+# Fix module imports when executed from external cwd (like PM2)
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+if CURRENT_DIR not in sys.path:
+    sys.path.insert(0, CURRENT_DIR)
+
 from dex_hunter import _fetch_candidates, check_token_security, calculate_gem_score
 from solana_executor import execute_solana_swap, get_solana_balance, base58_decode, base58_encode
 
