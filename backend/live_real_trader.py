@@ -140,25 +140,25 @@ def run_live_real_trader():
                                 price_gain_pct = ((highest_price - entry_price) / entry_price) * 100
                                 current_pnl_pct = ((current_price - entry_price) / entry_price) * 100
                                 
-                                 # V13.5 MOONSHOT RUNNER TRAILING & LOCK LOGIC
-                                 if price_gain_pct >= 400.0:
-                                     sl_price = highest_price * 0.70  # Trailing 30% from peak for mega runners
-                                     trail_level = "STAGE 4 (400%+ -> 30% TSL)"
-                                 elif price_gain_pct >= 150.0:
-                                     sl_price = highest_price * 0.75  # Trailing 25% from peak
-                                     trail_level = "STAGE 3 (150%+ -> 25% TSL)"
-                                 elif price_gain_pct >= 60.0:
-                                     sl_price = highest_price * 0.80  # Trailing 20% from peak
-                                     trail_level = "STAGE 2 (60%+ -> 20% TSL)"
-                                 elif price_gain_pct >= 30.0:
-                                     sl_price = entry_price * 1.15  # Lock +15% profit
-                                     trail_level = "STAGE 1 (+15% LOCK)"
-                                 elif price_gain_pct >= 15.0:
-                                     sl_price = entry_price * 1.02  # Breakeven Lock +2%
-                                     trail_level = "BE-LOCK (+2%)"
-                                 else:
-                                     sl_price = highest_price * 0.88  # Initial Stop Loss 12% from peak
-                                     trail_level = "TRAILING SL (12%)"
+                                # V13.5 MOONSHOT RUNNER TRAILING & LOCK LOGIC
+                                if price_gain_pct >= 400.0:
+                                    sl_price = highest_price * 0.70  # Trailing 30% from peak for mega runners
+                                    trail_level = "STAGE 4 (400%+ -> 30% TSL)"
+                                elif price_gain_pct >= 150.0:
+                                    sl_price = highest_price * 0.75  # Trailing 25% from peak
+                                    trail_level = "STAGE 3 (150%+ -> 25% TSL)"
+                                elif price_gain_pct >= 60.0:
+                                    sl_price = highest_price * 0.80  # Trailing 20% from peak
+                                    trail_level = "STAGE 2 (60%+ -> 20% TSL)"
+                                elif price_gain_pct >= 30.0:
+                                    sl_price = entry_price * 1.15  # Lock +15% profit
+                                    trail_level = "STAGE 1 (+15% LOCK)"
+                                elif price_gain_pct >= 15.0:
+                                    sl_price = entry_price * 1.02  # Breakeven Lock +2%
+                                    trail_level = "BE-LOCK (+2%)"
+                                else:
+                                    sl_price = highest_price * 0.88  # Initial Stop Loss 12% from peak
+                                    trail_level = "TRAILING SL (12%)"
                                     
                                 print(f"  [TRACKING] {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}% | Guard: {trail_level}", flush=True)
                                 
