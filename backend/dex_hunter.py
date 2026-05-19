@@ -23,6 +23,7 @@ _scanned_gems = []
 _verified_profiles = set()
 _trending_metas = []
 _boost_tracker = {}
+_community_takeover_tokens = set()  # NEW: Community Takeover signal
 _scan_lock = threading.Lock()
 _scan_thread = None
 _is_running = False
@@ -101,6 +102,22 @@ def check_token_security(chain: str, address: str) -> dict:
                 if top10_share > 60:
                     flags.append(f"WHALE_CONCENTRATION ({top10_share:.0f}%)")
                     score_impact -= 15
+        except Exception:
+            pass
+
+        # Lapis 3: RugCheck Holder Concentration (NEW: Top-1 Holder Anti-Whale Check)
+        try:
+            holders_url = f"https://api.rugcheck.xyz/v1/tokens/{address}/holders"
+            rh = requests.get(holders_url, timeout=5)
+            if rh.status_code == 200:
+                holders = rh.json()
+                if isinstance(holders, list) and holders:
+                    top1_pct = float(holders[0].get("pct", 0)) * 100
+                    if top1_pct > 20:
+                        flags.append(f"WHALE_TOP1_HOLDER ({top1_pct:.1f}%)")
+                        is_safe = False
+                    elif top1_pct < 5:
+                        score_impact += 10  # Healthy distributed ownership
         except Exception:
             pass
 
@@ -183,6 +200,8 @@ def calculate_gem_score(pair_data: dict, security: dict) -> int:
     """
     Ranks newly launched or trending pairs on a scale of 0 to 100.
     Integrates safety, growth velocity, liquidity health, and social presence.
+    V10.0: Added 6 new API signals: token age window, volume acceleration,
+    active boosts, community takeover, FDV inflation ratio, top-1 holder check.
     """
     score = 50 # Base intermediate score
     
@@ -190,6 +209,49 @@ def calculate_gem_score(pair_data: dict, security: dict) -> int:
     score += security.get("score_impact", 0)
     if security.get("status") == "DANGEROUS SCAM":
         return max(5, score) # Cap scam tokens to minimal score
+
+    # NEW SIGNAL 1: Token Age Window (Optimal Entry Timing)
+    # Too young = developer can still rug. Too old = pump already over.
+    age_sec = pair_data.get("age_estimate_sec", 3600)
+    if 900 <= age_sec <= 21600:   # Sweet spot: 15 min - 6 hours
+        score += 20
+    elif age_sec < 900:           # < 15 minutes: dangerously early
+        score -= 40
+    elif age_sec > 86400:         # > 24 hours: momentum likely exhausted
+        score -= 20
+
+    # NEW SIGNAL 2: Volume Acceleration (Is momentum GROWING right now?)
+    # Compare h1 volume vs the average hourly volume from h24 baseline
+    vol_1h = float(pair_data.get("volume_1h", 0) or 0)
+    vol_24h = float(pair_data.get("volume_24h", 0) or 0)
+    if vol_24h > 0:
+        baseline_hourly = vol_24h / 24.0
+        vol_accel = vol_1h / baseline_hourly if baseline_hourly > 0 else 1.0
+        if vol_accel > 3.0:
+            score += 15  # Volume 3x baseline = momentum explosion!
+        elif vol_accel > 1.5:
+            score += 8   # Volume above average = healthy uptrend
+        elif vol_accel < 0.5:
+            score -= 10  # Volume drying up = trend is dying
+
+    # NEW SIGNAL 3: Active Boosts (Someone paying RIGHT NOW to promote this)
+    active_boosts = pair_data.get("boosts_active", 0)
+    if active_boosts > 0:
+        score += 15  # Active paid promotion = real hype, not ghost
+
+    # NEW SIGNAL 4: Community Takeover Bonus (Strongest bullish narrative)
+    if pair_data.get("address") in _community_takeover_tokens:
+        score += 25  # Community took over = massive revival narrative!
+
+    # NEW SIGNAL 5: FDV vs MarketCap Inflation Ratio (Dump risk from unlocked supply)
+    fdv = float(pair_data.get("fdv", 0) or 0)
+    mcap = float(pair_data.get("market_cap", 0) or 0)
+    if fdv > 0 and mcap > 0:
+        inflation_ratio = fdv / mcap
+        if inflation_ratio > 10:
+            score -= 20  # 90%+ supply not yet circulating = massive future dump risk!
+        elif inflation_ratio <= 1.2:
+            score += 10  # Almost all supply already in circulation = safe!
         
     # 2. Liquidity depth & Mcap ratio (Healthy memecoins: 10% to 35% L/MC ratio)
     liq = float(pair_data.get("liquidity", 0) or 0)
@@ -280,7 +342,7 @@ def _fetch_candidates() -> list:
     global _verified_profiles, _boost_tracker
     candidates = {}
     
-    # 1. Update Verified Profiles & Trending Metas (V6 Premium Data Fetch)
+    # 1. Update Verified Profiles, Community Takeovers & Trending Metas
     try:
         profile_url = "https://api.dexscreener.com/token-profiles/latest/v1"
         res = requests.get(profile_url, timeout=5)
@@ -290,6 +352,18 @@ def _fetch_candidates() -> list:
                 _verified_profiles = {p.get("tokenAddress") for p in profiles if p.get("tokenAddress")}
     except Exception as e:
         print(f"[DEX HUNTER] Profile list fetch failed: {e}")
+
+    # NEW SIGNAL 4: Community Takeover tokens (Bullish revival narrative)
+    global _community_takeover_tokens
+    try:
+        takeover_url = "https://api.dexscreener.com/community-takeovers/latest/v1"
+        res = requests.get(takeover_url, timeout=5)
+        if res.status_code == 200:
+            takeovers = res.json()
+            if isinstance(takeovers, list):
+                _community_takeover_tokens = {t.get("tokenAddress") for t in takeovers if t.get("tokenAddress")}
+    except Exception as e:
+        print(f"[DEX HUNTER] Community takeover fetch failed: {e}")
 
     global _trending_metas
     try:
@@ -364,15 +438,18 @@ def _fetch_candidates() -> list:
                     "price": float(primary_p.get("priceUsd", 0) or 0),
                     "volume_5m": float(primary_p.get("volume", {}).get("m5", 0) or 0),
                     "volume_1h": float(primary_p.get("volume", {}).get("h1", 0) or 0),
-                    "liquidity": aggregated_liquidity, # Multi-Pool Aggregated Liquidity!
+                    "volume_24h": float(primary_p.get("volume", {}).get("h24", 0) or 0),  # NEW: for volume acceleration
+                    "liquidity": aggregated_liquidity,
                     "market_cap": mcap,
+                    "fdv": float(primary_p.get("fdv", 0) or 0),  # NEW: for FDV inflation ratio
                     "price_change_5m": float(primary_p.get("priceChange", {}).get("m5", 0) or 0),
                     "price_change_1h": float(primary_p.get("priceChange", {}).get("h1", 0) or 0),
                     "txns": primary_p.get("txns", {}),
                     "info": primary_p.get("info", {}),
                     "url": primary_p.get("url", ""),
                     "boost_amount": _boost_tracker.get(addr, 0),
-                    "age_estimate_sec": int(time.time() - (float(primary_p.get("pairCreatedAt", 0)) / 1000)) if primary_p.get("pairCreatedAt") else 300
+                    "boosts_active": int(primary_p.get("boosts", {}).get("active", 0) or 0),  # NEW: active boosts
+                    "age_estimate_sec": int(time.time() - (float(primary_p.get("pairCreatedAt", 0)) / 1000)) if primary_p.get("pairCreatedAt") else 3600
                 }
         except Exception as e:
             pass
