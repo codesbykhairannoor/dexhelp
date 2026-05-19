@@ -141,7 +141,7 @@ def run_live_paper_trader():
                         # Map latest price per token
                         price_map = {}
                         for addr in addr_list:
-                            tinfo = res.get("data", {}).get(addr, {})
+                            tinfo = res.get("data", {}).get(addr, {}) if "data" in res else res.get(addr, {})
                             price = tinfo.get("usdPrice")
                             if price is not None:
                                 price_map[addr] = {"price": float(price)}
