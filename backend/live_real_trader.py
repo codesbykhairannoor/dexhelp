@@ -140,12 +140,21 @@ def run_live_real_trader():
                                 price_gain_pct = ((highest_price - entry_price) / entry_price) * 100
                                 current_pnl_pct = ((current_price - entry_price) / entry_price) * 100
                                 
-                                # V9.1 OPTIMAL REAL-WORLD PARAMETERS (BE-GUARD ACTIVE, SL 20%, TP 30%)
-                                if price_gain_pct >= 30.0:
-                                    sl_price = entry_price * 1.30  # Exit immediately at +30% target!
-                                    trail_level = "STAGE 1 (+30% TP)"
+                                # V12.0 INFINITE MOONSHOT MULTI-STAGE TRAILING SL (NO FLAT TP TARGET!)
+                                if price_gain_pct >= 300.0:
+                                    sl_price = highest_price * 0.60  # 40% trailing distance from peak
+                                    trail_level = "STAGE 4 SUPER MOONSHOT (40% TRAILING)"
+                                elif price_gain_pct >= 100.0:
+                                    sl_price = highest_price * 0.70  # 30% trailing distance from peak
+                                    trail_level = "STAGE 3 MOONSHOT (30% TRAILING)"
+                                elif price_gain_pct >= 50.0:
+                                    sl_price = entry_price * 1.35  # Lock +35% profit
+                                    trail_level = "STAGE 2 (+35% LOCK)"
+                                elif price_gain_pct >= 20.0:
+                                    sl_price = entry_price * 1.10  # Lock +10% profit
+                                    trail_level = "STAGE 1 (+10% LOCK)"
                                 elif price_gain_pct >= 4.0:
-                                    sl_price = entry_price * 1.03  # Drag to positive BE at +4% gain
+                                    sl_price = entry_price * 1.03  # Breakeven Guard +3%
                                     trail_level = "BE-GUARD (+3%)"
                                 else:
                                     sl_price = highest_price * 0.80  # Stop Loss 20% from peak
@@ -154,7 +163,7 @@ def run_live_real_trader():
                                 print(f"  [TRACKING] {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}% | Guard: {trail_level}", flush=True)
                                 
                                 # --- AUTOMATED ON-CHAIN STOP-LOSS SWAP SELL ---
-                                if current_price <= sl_price or price_gain_pct >= 30.0:
+                                if current_price <= sl_price:
                                     print(f"\n🚨 [EXIT TRIGGERED] {trail_level} hit for {pos['symbol']}! Executing real market sell swap...", flush=True)
                                     
                                     raw_qty = int(pos["raw_qty"])
@@ -175,9 +184,9 @@ def run_live_real_trader():
                                         print(f"   => SOL Received: {sol_received:.6f} SOL | PnL: {pnl_sol:+.6f} SOL", flush=True)
                                         print(f"   => Tx Signature: {sell_res['explorer_url']}", flush=True)
                                         
-                                        # Persist 24-hour Cooldown Shield to prevent re-entries
-                                        portfolio.setdefault("cooldowns", {})[addr] = time.time() + 86400
-                                        print(f"   => [SHIELD] Alamat {addr} masuk daftar Cooldown 24 Jam.", flush=True)
+                                        # Persist 4-hour Cooldown Shield to prevent re-entries
+                                        portfolio.setdefault("cooldowns", {})[addr] = time.time() + 14400
+                                        print(f"   => [SHIELD] Alamat {addr} masuk daftar Cooldown 4 Jam.", flush=True)
                                         
                                         portfolio["trade_history"].append({
                                             "symbol": pos["symbol"],

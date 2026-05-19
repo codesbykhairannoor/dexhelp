@@ -157,12 +157,21 @@ def run_live_paper_trader():
                                 price_gain_pct = ((highest_price - entry_price) / entry_price) * 100
                                 current_pnl_pct = ((current_price - entry_price) / entry_price) * 100
                                 
-                                # V9.1 OPTIMAL REAL-WORLD PARAMETERS (BE-GUARD ACTIVE, SL 20%, TP 30%)
-                                if price_gain_pct >= 30.0:
-                                    sl_price = entry_price * 1.30  # Exit immediately at +30% target!
-                                    trail_level = "STAGE 1 (+30% TP)"
+                                # V12.0 INFINITE MOONSHOT MULTI-STAGE TRAILING SL (NO FLAT TP TARGET!)
+                                if price_gain_pct >= 300.0:
+                                    sl_price = highest_price * 0.60  # 40% trailing distance from peak
+                                    trail_level = "STAGE 4 SUPER MOONSHOT (40% TRAILING)"
+                                elif price_gain_pct >= 100.0:
+                                    sl_price = highest_price * 0.70  # 30% trailing distance from peak
+                                    trail_level = "STAGE 3 MOONSHOT (30% TRAILING)"
+                                elif price_gain_pct >= 50.0:
+                                    sl_price = entry_price * 1.35  # Lock +35% profit
+                                    trail_level = "STAGE 2 (+35% LOCK)"
+                                elif price_gain_pct >= 20.0:
+                                    sl_price = entry_price * 1.10  # Lock +10% profit
+                                    trail_level = "STAGE 1 (+10% LOCK)"
                                 elif price_gain_pct >= 4.0:
-                                    sl_price = entry_price * 1.03  # Drag to positive BE at +4% gain
+                                    sl_price = entry_price * 1.03  # Breakeven Guard +3%
                                     trail_level = "BE-GUARD (+3%)"
                                 else:
                                     sl_price = highest_price * 0.80  # Stop Loss 20% from peak
@@ -170,9 +179,9 @@ def run_live_paper_trader():
                                     
                                 print(f"  [POSITION] {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | Puncak: ${highest_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}% | Guard: {trail_level}")
                                 
-                                # Trigger Trailing Stop Loss or Take Profit
-                                if current_price <= sl_price or price_gain_pct >= 30.0:
-                                    exit_price = current_price if price_gain_pct >= 30.0 else sl_price
+                                # Trigger exit ONLY when current price falls below dynamic trailing SL
+                                if current_price <= sl_price:
+                                    exit_price = current_price
                                     net_exit_value = pos["qty"] * exit_price
                                     
                                     # Use gross_investment if available, fallback to net_investment
