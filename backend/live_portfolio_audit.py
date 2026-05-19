@@ -93,14 +93,23 @@ def audit_live_portfolio():
             print("-" * 80)
             
         total_portfolio_value = wallet_balance + total_active_value
-        net_portfolio_pnl = total_portfolio_value - 100.00 # Starting virtual was 100.00
+        
+        # Dynamic Quant Reconstruction: Reconstruct starting capital from trade history
+        total_history_pnl = sum(t.get("pnl_usd", 0.0) for t in portfolio.get("trade_history", []))
+        initial_capital = total_portfolio_value - total_history_pnl
+        if initial_capital <= 0:
+            initial_capital = 12.00  # Fallback to $12 starting capital
+            
+        net_portfolio_pnl_usd = total_portfolio_value - initial_capital
+        net_portfolio_pnl_pct = (net_portfolio_pnl_usd / initial_capital) * 100 if initial_capital > 0 else 0.0
         
         print("[SUMMARY] RINGKASAN KINERJA PORTOFOLIO:")
         print("-" * 80)
         print(f"  Total Nilai Aset Aktif : ${total_active_value:.2f}")
         print(f"  Saldo Kas Tunai        : ${wallet_balance:.2f}")
         print(f"  TOTAL NILAI NET ASET   : ${total_portfolio_value:.2f}")
-        print(f"  Akumulasi PnL Bersih   : {net_portfolio_pnl:+.2f}% ({net_portfolio_pnl:+.2f} USD)")
+        print(f"  Modal Awal (Murni)     : ${initial_capital:.2f}")
+        print(f"  Akumulasi PnL Bersih   : {net_portfolio_pnl_pct:+.2f}% ({net_portfolio_pnl_usd:+.2f} USD)")
         print("=" * 80)
         
     except Exception as e:
