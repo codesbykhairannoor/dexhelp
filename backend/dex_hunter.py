@@ -10,8 +10,8 @@ from collections import defaultdict
 #  CONFIG & INITIALIZATION
 # ============================================================================-
 SCAN_INTERVAL_SEC     = 60     # Scan DexScreener every 1 minute
-MIN_LIQUIDITY_USD     = 10000  # Minimum $10k liquidity for safety
-MIN_MCAP_USD          = 15000  # Minimum $15k marketcap to filter dust
+MIN_LIQUIDITY_USD     = 25000  # Minimum $25k liquidity for safety (Up from $10k to filter cheap scams)
+MIN_MCAP_USD          = 35000  # Minimum $35k marketcap to filter dust (Up from $15k)
 MAX_MCAP_USD          = 10000000 # Max $10M to target early stage gems
 DEX_CHAINS            = ["solana", "base"] # Top high-yield meme networks
 
@@ -487,16 +487,22 @@ def _fetch_candidates() -> list:
             l_mc_ratio = (aggregated_liquidity / mcap) if mcap > 0 else 0
             
             # V13.0 Buy/Sell Transaction Velocity Ratio (BS-Ratio)
+            # V13.0 Buy/Sell Transaction Velocity Ratio (BS-Ratio)
             tx_5m = primary_p.get("txns", {}).get("m5", {})
             buys = int(tx_5m.get("buys", 0))
             sells = int(tx_5m.get("sells", 0))
             bs_ratio = (buys / (buys + sells)) if (buys + sells) > 0 else 0.50
             
-            # Apply strict V13.0 Quantitative Filters
+            # Calculate token age estimate first
+            age_estimate_sec = int(time.time() - (float(primary_p.get("pairCreatedAt", 0)) / 1000)) if primary_p.get("pairCreatedAt") else 3600
+            
+            # Apply strict V14.0 Quantitative Filters
+            # Avoid too young tokens (< 10 minutes) where safety APIs are blind or developers rug instantly
             if (aggregated_liquidity >= MIN_LIQUIDITY_USD and 
                 mcap >= MIN_MCAP_USD and mcap <= MAX_MCAP_USD and
                 0.08 <= l_mc_ratio <= 0.25 and
-                bs_ratio >= 0.65):
+                bs_ratio >= 0.65 and
+                600 <= age_estimate_sec <= 43200): # Sweet spot: 10 minutes to 12 hours old
                 candidates[addr] = {
                     "chain": chain_id,
                     "pair_address": primary_p.get("pairAddress", ""),
@@ -517,7 +523,7 @@ def _fetch_candidates() -> list:
                     "url": primary_p.get("url", ""),
                     "boost_amount": _boost_tracker.get(addr, 0),
                     "boosts_active": int(primary_p.get("boosts", {}).get("active", 0) or 0),  # NEW: active boosts
-                    "age_estimate_sec": int(time.time() - (float(primary_p.get("pairCreatedAt", 0)) / 1000)) if primary_p.get("pairCreatedAt") else 3600
+                    "age_estimate_sec": age_estimate_sec
                 }
         except Exception as e:
             pass
@@ -554,11 +560,14 @@ def _fetch_candidates() -> list:
                 sells = int(tx_5m.get("sells", 0))
                 bs_ratio = (buys / (buys + sells)) if (buys + sells) > 0 else 0.50
                 
+                # Calculate token age estimate first
+                age_sec = int(time.time() - (float(p.get("pairCreatedAt", 0)) / 1000)) if p.get("pairCreatedAt") else 3600
+                
                 if (addr and liq >= MIN_LIQUIDITY_USD and 
                     mcap >= MIN_MCAP_USD and mcap <= MAX_MCAP_USD and
                     0.08 <= l_mc_ratio <= 0.25 and
-                    bs_ratio >= 0.65):
-                    age_sec = int(time.time() - (float(p.get("pairCreatedAt", 0)) / 1000)) if p.get("pairCreatedAt") else 3600
+                    bs_ratio >= 0.65 and
+                    600 <= age_sec <= 43200): # Sweet spot: 10 minutes to 12 hours old
                     candidates[addr] = {
                         "chain": chain_id,
                         "pair_address": p.get("pairAddress", ""),
