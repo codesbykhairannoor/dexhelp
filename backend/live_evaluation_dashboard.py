@@ -44,9 +44,15 @@ def run_evaluation_dashboard():
                         jupiter_key = line.split("=")[-1].strip().strip('"').strip("'")
                         break
                         
-    # Gather tokens to fetch: active tokens + last 10 closed tokens for Post-Exit Audit
+    # Gather tokens to fetch: active tokens + closed tokens for Post-Exit Audit
+    show_all = len(sys.argv) > 1 and sys.argv[1].lower() in ["--all", "all"]
     tokens_to_query = list(active_positions.keys())
-    closed_audit_list = trade_history[-10:]
+    
+    if show_all:
+        closed_audit_list = trade_history
+    else:
+        closed_audit_list = trade_history[-10:]
+        
     for t in closed_audit_list:
         addr = t.get("address")
         if addr and addr not in tokens_to_query:
@@ -130,7 +136,8 @@ def run_evaluation_dashboard():
     print("-" * 110)
     
     # Section 3: Closed Trades History Table + Post-Exit Audit
-    print(f"[3] RIWAYAT CLOSED TRADES & POST-EXIT AUDIT (10 Transaksi Terakhir):")
+    limit_text = "Semua Transaksi" if show_all else "10 Transaksi Terakhir"
+    print(f"[3] RIWAYAT CLOSED TRADES & POST-EXIT AUDIT ({limit_text}):")
     if trade_history:
         print(f"    {'SYMBOL':<10} | {'ENTRY':<11} | {'EXIT':<11} | {'PnL %':<8} | {'LIVE NOW':<11} | {'POST-CHG %':<10} | {'AUDIT EVALUATION'}")
         print("    " + "-" * 100)
@@ -161,7 +168,7 @@ def run_evaluation_dashboard():
                 
             print(f"    {t['symbol']:<10} | ${t['entry_price']:<10.8f} | ${exit_price:<10.8f} | {pnl_pct:+.2f}% | ${live_price:<10.8f} | {post_exit_chg:+.2f}% | {audit_eval}")
             
-        if len(trade_history) > 10:
+        if not show_all and len(trade_history) > 10:
             print(f"    ... dan {len(trade_history) - 10} transaksi lama lainnya.")
     else:
         print("    (Belum ada transaksi selesai)")
