@@ -243,6 +243,10 @@ def calculate_gem_score(pair_data: dict, security: dict) -> int:
     if security.get("status") == "DANGEROUS SCAM":
         return max(5, score) # Cap scam tokens to minimal score
 
+    # V16.0 ZERO-MINUTE SNIPE BONUS
+    if pair_data.get("zero_minute_snipe"):
+        score += 80  # Guarantee high score for zero-minute snipes that pass security
+
     # NEW SIGNAL 1: Token Age Window (Optimal Entry Timing)
     # Too young = developer can still rug. Too old = pump already over.
     age_sec = pair_data.get("age_estimate_sec", 3600)
@@ -381,234 +385,91 @@ def calculate_gem_score(pair_data: dict, security: dict) -> int:
 # ============================================================================-
 
 def _fetch_candidates() -> list:
-    """Queries DexScreener API for new and trending tokens using Token Boosts & Profiles."""
-    global _verified_profiles, _boost_tracker
+    """V16.0 ZERO-MINUTE HUNTER: Fetch ultra-fresh tokens from RugCheck and verify on DexScreener"""
     candidates = {}
     
-    profiles_list = []
-    takeovers_list = []
-
-    # 1. Update Verified Profiles, Community Takeovers & Trending Metas
+    # 1. Fetch ultra-fresh tokens from RugCheck
+    new_tokens = []
     try:
-        profile_url = "https://api.dexscreener.com/token-profiles/latest/v1"
-        res = requests.get(profile_url, timeout=5)
-        if res.status_code == 200:
-            profiles_list = res.json()
-            if isinstance(profiles_list, list):
-                _verified_profiles = {p.get("tokenAddress") for p in profiles_list if p.get("tokenAddress")}
+        r = requests.get('https://api.rugcheck.xyz/v1/stats/new_tokens', timeout=5)
+        if r.status_code == 200:
+            new_tokens = r.json()
     except Exception as e:
-        print(f"[DEX HUNTER] Profile list fetch failed: {e}")
+        print(f"[DEX HUNTER] Gagal mengambil new_tokens: {e}")
+        
+    if not new_tokens:
+        return []
 
-    # NEW SIGNAL 4: Community Takeover tokens (Bullish revival narrative)
-    global _community_takeover_tokens
-    try:
-        takeover_url = "https://api.dexscreener.com/community-takeovers/latest/v1"
-        res = requests.get(takeover_url, timeout=5)
-        if res.status_code == 200:
-            takeovers_list = res.json()
-            if isinstance(takeovers_list, list):
-                _community_takeover_tokens = {t.get("tokenAddress") for t in takeovers_list if t.get("tokenAddress")}
-    except Exception as e:
-        print(f"[DEX HUNTER] Community takeover fetch failed: {e}")
-
-    global _trending_metas
-    try:
-        meta_url = "https://api.dexscreener.com/metas/trending/v1"
-        res = requests.get(meta_url, timeout=5)
-        if res.status_code == 200:
-            metas = res.json()
-            if isinstance(metas, list):
-                _trending_metas = [m.get("slug", "").lower() for m in metas if m.get("slug")]
-    except Exception as e:
-        print(f"[DEX HUNTER] Trending metas list fetch failed: {e}")
-
-    # 2. Fetch from Token Boosts (Latest & Top)
-    boost_urls = [
-        "https://api.dexscreener.com/token-boosts/latest/v1",
-        "https://api.dexscreener.com/token-boosts/top/v1"
-    ]
-    
-    addresses_to_scan = []
-    
-    # Golden Funnel A: Extract from Token Boosts
-    for url in boost_urls:
+    # 2. Iterate and check against DexScreener for "Graduation" (liquidity initialized)
+    for t in new_tokens[:15]:  # Limit to top 15 newest to avoid rate limits
+        mint = t.get('mint')
+        if not mint:
+            continue
+            
+        # Basic pre-filter: Token MUST be safe on chain (no mint/freeze authority)
+        mint_auth = t.get('mintAuthority', '')
+        freeze_auth = t.get('freezeAuthority', '')
+        if (mint_auth != '' and mint_auth is not None) or (freeze_auth != '' and freeze_auth is not None):
+            continue  # Scam potential, skip immediately
+            
+        # Verify if it has liquidity on DexScreener
         try:
-            res = requests.get(url, timeout=10)
-            if res.status_code == 200:
-                boosted = res.json()
-                if isinstance(boosted, list):
-                    for b in boosted:
-                        chain_id = b.get("chainId", "").lower()
-                        if chain_id in DEX_CHAINS:
-                            addr = b.get("tokenAddress")
-                            if addr:
-                                # V13.1 GOLDEN FACT: Use totalAmount representing cumulative boost weight (viral factor)
-                                _boost_tracker[addr] = int(b.get("totalAmount", 0) or b.get("amount", 0) or 0)
-                                if (chain_id, addr) not in addresses_to_scan:
-                                    addresses_to_scan.append((chain_id, addr))
-        except Exception as e:
-            print(f"[DEX HUNTER] Boost fetch failed: {e}")
-            
-    # Golden Funnel B: Inject Token Profiles to addresses_to_scan
-    try:
-        if isinstance(profiles_list, list):
-            for p in profiles_list:
-                chain_id = p.get("chainId", "").lower()
-                if chain_id in DEX_CHAINS:
-                    addr = p.get("tokenAddress")
-                    if addr and (chain_id, addr) not in addresses_to_scan:
-                        addresses_to_scan.append((chain_id, addr))
-    except Exception:
-        pass
-
-    # Golden Funnel C: Inject Community Takeovers to addresses_to_scan
-    try:
-        if isinstance(takeovers_list, list):
-            for t in takeovers_list:
-                chain_id = t.get("chainId", "").lower()
-                if chain_id in DEX_CHAINS:
-                    addr = t.get("tokenAddress")
-                    if addr and (chain_id, addr) not in addresses_to_scan:
-                        addresses_to_scan.append((chain_id, addr))
-    except Exception:
-        pass
-
-    # Limit to 80 addresses to maximize candidate pool
-    addresses_to_scan = list({(c, a) for c, a in addresses_to_scan})[:80]
-    
-    # 3. Fetch full pair details & run Multi-Pool Liquidity Aggregator
-    for chain_id, addr in addresses_to_scan:
-        try:
-            url = f"https://api.dexscreener.com/latest/dex/tokens/{addr}"
-            res = requests.get(url, timeout=10).json()
-            pairs = res.get("pairs", []) or []
-            
-            if not pairs:
-                continue
+            dex_r = requests.get(f'https://api.dexscreener.com/latest/dex/tokens/{mint}', timeout=5)
+            if dex_r.status_code == 200:
+                dex_data = dex_r.json()
+                pairs = dex_data.get('pairs', []) or []
                 
-            # Filter pairs of the target chain and run aggregation
-            chain_pairs = [p for p in pairs if p.get("chainId", "").lower() == chain_id]
-            if not chain_pairs:
-                continue
+                # Filter for Solana pairs only
+                sol_pairs = [p for p in pairs if p.get('chainId', '').lower() == 'solana']
+                if not sol_pairs:
+                    continue
+                    
+                sol_pairs.sort(key=lambda x: float(x.get('liquidity', {}).get('usd', 0) or 0), reverse=True)
+                primary_p = sol_pairs[0]
                 
-            # Sort by liquidity descending to identify primary pool
-            chain_pairs.sort(key=lambda x: float(x.get("liquidity", {}).get("usd", 0) or 0), reverse=True)
-            primary_p = chain_pairs[0]
-            
-            # Aggregate total liquidity across all pools on the chain
-            aggregated_liquidity = sum(float(p.get("liquidity", {}).get("usd", 0) or 0) for p in chain_pairs)
-            mcap = float(primary_p.get("marketCap", 0) or 0)
-            
-            # V13.0 L/MC Ratio Calculation & Filtering
-            l_mc_ratio = (aggregated_liquidity / mcap) if mcap > 0 else 0
-            
-            # V13.0 Buy/Sell Transaction Velocity Ratio (BS-Ratio)
-            # V13.0 Buy/Sell Transaction Velocity Ratio (BS-Ratio)
-            tx_5m = primary_p.get("txns", {}).get("m5", {})
-            buys = int(tx_5m.get("buys", 0))
-            sells = int(tx_5m.get("sells", 0))
-            bs_ratio = (buys / (buys + sells)) if (buys + sells) > 0 else 0.50
-            
-            # Calculate token age estimate first
-            age_estimate_sec = int(time.time() - (float(primary_p.get("pairCreatedAt", 0)) / 1000)) if primary_p.get("pairCreatedAt") else 3600
-            
-            # Apply strict V14.0 Quantitative Filters
-            # Avoid too young tokens (< 10 minutes) where safety APIs are blind or developers rug instantly
-            if (aggregated_liquidity >= MIN_LIQUIDITY_USD and 
-                mcap >= MIN_MCAP_USD and mcap <= MAX_MCAP_USD and
-                0.08 <= l_mc_ratio <= 0.25 and
-                bs_ratio >= 0.65 and
-                600 <= age_estimate_sec <= 43200): # Sweet spot: 10 minutes to 12 hours old
-                candidates[addr] = {
-                    "chain": chain_id,
-                    "pair_address": primary_p.get("pairAddress", ""),
-                    "symbol": primary_p.get("baseToken", {}).get("symbol", "UNKNOWN"),
-                    "name": primary_p.get("baseToken", {}).get("name", "UNKNOWN"),
-                    "address": addr,
-                    "price": float(primary_p.get("priceUsd", 0) or 0),
-                    "volume_5m": float(primary_p.get("volume", {}).get("m5", 0) or 0),
-                    "volume_1h": float(primary_p.get("volume", {}).get("h1", 0) or 0),
-                    "volume_24h": float(primary_p.get("volume", {}).get("h24", 0) or 0),  # NEW: for volume acceleration
-                    "liquidity": aggregated_liquidity,
-                    "market_cap": mcap,
-                    "fdv": float(primary_p.get("fdv", 0) or 0),  # NEW: for FDV inflation ratio
-                    "price_change_5m": float(primary_p.get("priceChange", {}).get("m5", 0) or 0),
-                    "price_change_1h": float(primary_p.get("priceChange", {}).get("h1", 0) or 0),
-                    "txns": primary_p.get("txns", {}),
-                    "info": primary_p.get("info", {}),
-                    "url": primary_p.get("url", ""),
-                    "boost_amount": _boost_tracker.get(addr, 0),
-                    "boosts_active": int(primary_p.get("boosts", {}).get("active", 0) or 0),  # NEW: active boosts
-                    "age_estimate_sec": age_estimate_sec
-                }
+                liq = float(primary_p.get("liquidity", {}).get("usd", 0) or 0)
+                mcap = float(primary_p.get("marketCap", 0) or 0)
+                age_sec = int(time.time() - (float(primary_p.get("pairCreatedAt", 0)) / 1000)) if primary_p.get("pairCreatedAt") else 3600
+                
+                # V16.0 STRICT ZERO-MINUTE FILTERS
+                # 1. Age must be <= 900 seconds (15 minutes)
+                # 2. Liquidity must be >= $5000 (meaning it graduated from pump.fun or got initial seeding)
+                if age_sec <= 900 and liq >= 5000:
+                    
+                    # Sniper Detection (Buy/Sell Ratio)
+                    tx_5m = primary_p.get("txns", {}).get("m5", {})
+                    buys = int(tx_5m.get("buys", 0))
+                    sells = int(tx_5m.get("sells", 0))
+                    
+                    # Require strong initial buying pressure (Smart Money entering)
+                    if buys > (sells * 2) or (buys > 10 and sells == 0):
+                        
+                        candidates[mint] = {
+                            "chain": "solana",
+                            "pair_address": primary_p.get("pairAddress", ""),
+                            "symbol": primary_p.get("baseToken", {}).get("symbol", "UNKNOWN"),
+                            "name": primary_p.get("baseToken", {}).get("name", "UNKNOWN"),
+                            "address": mint,
+                            "price": float(primary_p.get("priceUsd", 0) or 0),
+                            "volume_5m": float(primary_p.get("volume", {}).get("m5", 0) or 0),
+                            "volume_1h": float(primary_p.get("volume", {}).get("h1", 0) or 0),
+                            "volume_24h": float(primary_p.get("volume", {}).get("h24", 0) or 0),
+                            "liquidity": liq,
+                            "market_cap": mcap,
+                            "fdv": float(primary_p.get("fdv", 0) or 0),
+                            "price_change_5m": float(primary_p.get("priceChange", {}).get("m5", 0) or 0),
+                            "price_change_1h": float(primary_p.get("priceChange", {}).get("h1", 0) or 0),
+                            "txns": primary_p.get("txns", {}),
+                            "info": primary_p.get("info", {}),
+                            "url": primary_p.get("url", ""),
+                            "boost_amount": 0, # Not relying on boosts anymore
+                            "boosts_active": int(primary_p.get("boosts", {}).get("active", 0) or 0),
+                            "age_estimate_sec": age_sec,
+                            "zero_minute_snipe": True # Flag for live_paper_trader
+                        }
         except Exception as e:
             pass
-
-    # EXPANDED MULTI-SOURCE SEARCH (Always run, not just as fallback)
-    # 12 targeted queries to massively widen the candidate funnel
-    SEARCH_QUERIES = [
-        "solana", "pump", "pepe", "doge", "moon", "ape",
-        "meme", "cat", "dog", "ai", "based", "new"
-    ]
-    for query in SEARCH_QUERIES:
-        try:
-            url = f"https://api.dexscreener.com/latest/dex/search?q={query}"
-            res = requests.get(url, timeout=10).json()
-            pairs = res.get("pairs", []) or []
             
-            for p in pairs:
-                chain_id = p.get("chainId", "").lower()
-                if chain_id not in DEX_CHAINS:
-                    continue
-                
-                addr = p.get("baseToken", {}).get("address", "")
-                if not addr or addr in candidates:
-                    continue
-                liq = float(p.get("liquidity", {}).get("usd", 0) or 0)
-                mcap = float(p.get("marketCap", 0) or 0)
-                
-                # V13.0 L/MC Ratio Calculation & Filtering
-                l_mc_ratio = (liq / mcap) if mcap > 0 else 0
-                
-                # V13.0 Buy/Sell Transaction Velocity Ratio (BS-Ratio)
-                tx_5m = p.get("txns", {}).get("m5", {})
-                buys = int(tx_5m.get("buys", 0))
-                sells = int(tx_5m.get("sells", 0))
-                bs_ratio = (buys / (buys + sells)) if (buys + sells) > 0 else 0.50
-                
-                # Calculate token age estimate first
-                age_sec = int(time.time() - (float(p.get("pairCreatedAt", 0)) / 1000)) if p.get("pairCreatedAt") else 3600
-                
-                if (addr and liq >= MIN_LIQUIDITY_USD and 
-                    mcap >= MIN_MCAP_USD and mcap <= MAX_MCAP_USD and
-                    0.08 <= l_mc_ratio <= 0.25 and
-                    bs_ratio >= 0.65 and
-                    600 <= age_sec <= 43200): # Sweet spot: 10 minutes to 12 hours old
-                    candidates[addr] = {
-                        "chain": chain_id,
-                        "pair_address": p.get("pairAddress", ""),
-                        "symbol": p.get("baseToken", {}).get("symbol", "UNKNOWN"),
-                        "name": p.get("baseToken", {}).get("name", "UNKNOWN"),
-                        "address": addr,
-                        "price": float(p.get("priceUsd", 0) or 0),
-                        "volume_5m": float(p.get("volume", {}).get("m5", 0) or 0),
-                        "volume_1h": float(p.get("volume", {}).get("h1", 0) or 0),
-                        "volume_24h": float(p.get("volume", {}).get("h24", 0) or 0),
-                        "liquidity": liq,
-                        "market_cap": mcap,
-                        "fdv": float(p.get("fdv", 0) or 0),
-                        "price_change_5m": float(p.get("priceChange", {}).get("m5", 0) or 0),
-                        "price_change_1h": float(p.get("priceChange", {}).get("h1", 0) or 0),
-                        "txns": p.get("txns", {}),
-                        "info": p.get("info", {}),
-                        "url": p.get("url", ""),
-                        "boost_amount": _boost_tracker.get(addr, 0),
-                        "boosts_active": int(p.get("boosts", {}).get("active", 0) or 0),
-                        "age_estimate_sec": age_sec
-                    }
-        except Exception:
-            pass
-                
     return list(candidates.values())
 
 def _scan_pipeline():
