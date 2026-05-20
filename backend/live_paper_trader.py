@@ -81,6 +81,22 @@ def save_portfolio(portfolio: dict):
         print(f"[ERROR] Gagal menyimpan portofolio: {e}")
 
 def run_live_paper_trader():
+    if "--reset" in sys.argv:
+        default_portfolio = {
+            "wallet_balance": 1000.00,
+            "initial_capital": 1000.00,
+            "active_positions": {},
+            "trade_history": [],
+            "cooldowns": {}
+        }
+        try:
+            with open(PORTFOLIO_FILE, "w") as f:
+                json.dump(default_portfolio, f, indent=4)
+            print("[RESET] Portofolio dan riwayat trading berhasil di-reset ke modal awal $1,000.00!")
+        except Exception as e:
+            print(f"[ERROR] Gagal mereset portofolio: {e}")
+        return
+
     portfolio = load_portfolio()
     
     print("=" * 80)
