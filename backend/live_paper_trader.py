@@ -167,7 +167,25 @@ def run_live_paper_trader():
                             if price is not None:
                                 price_map[addr] = {"price": float(price)}
                                 
-                    # Fallback: query DexScreener API for any token missing price info
+                    # Fallback 1: query Birdeye API for any token missing price info
+                    missing_addrs = [addr for addr in addr_list if addr not in price_map]
+                    if missing_addrs:
+                        birdeye_key = os.getenv("BIRDEYE_API_KEY", "")
+                        if birdeye_key:
+                            for addr in missing_addrs:
+                                try:
+                                    be_url = f"https://public-api.birdeye.so/defi/price?address={addr}"
+                                    be_headers = {"X-API-KEY": birdeye_key, "Accept": "application/json"}
+                                    be_res = requests.get(be_url, headers=be_headers, timeout=5).json()
+                                    if be_res.get("success"):
+                                        price = be_res.get("data", {}).get("value")
+                                        if price is not None:
+                                            price_map[addr] = {"price": float(price)}
+                                            # print(f"  [FEED] Fallback sukses via Birdeye untuk {addr}")
+                                except Exception:
+                                    pass
+
+                    # Fallback 2: query DexScreener API for any token still missing price info
                     missing_addrs = [addr for addr in addr_list if addr not in price_map]
                     for addr in missing_addrs:
                         try:

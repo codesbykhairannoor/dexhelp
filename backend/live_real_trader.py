@@ -136,7 +136,25 @@ def run_live_real_trader():
                             if price is not None:
                                 price_map[addr] = {"price": float(price)}
                                 
-                    # Fallback: query DexScreener API for any token missing price info
+                    # Fallback 1: query Birdeye API for any token missing price info
+                    missing_addrs = [addr for addr in addr_list if addr not in price_map]
+                    if missing_addrs:
+                        birdeye_key = os.getenv("BIRDEYE_API_KEY", "")
+                        if birdeye_key:
+                            for addr in missing_addrs:
+                                try:
+                                    be_url = f"https://public-api.birdeye.so/defi/price?address={addr}"
+                                    be_headers = {"X-API-KEY": birdeye_key, "Accept": "application/json"}
+                                    be_res = requests.get(be_url, headers=be_headers, timeout=5).json()
+                                    if be_res.get("success"):
+                                        price = be_res.get("data", {}).get("value")
+                                        if price is not None:
+                                            price_map[addr] = {"price": float(price)}
+                                            # print(f"  [FEED] Fallback sukses via Birdeye untuk {addr}")
+                                except Exception:
+                                    pass
+
+                    # Fallback 2: query DexScreener API for any token still missing price info
                     missing_addrs = [addr for addr in addr_list if addr not in price_map]
                     for addr in missing_addrs:
                         try:
@@ -148,117 +166,169 @@ def run_live_real_trader():
                                 price = pairs[0].get("priceUsd")
                                 if price is not None:
                                     price_map[addr] = {"price": float(price)}
-                                    # print(f"  [FEED] Fallback sukses via DexScreener untuk {pairs[0].get('baseToken', {}).get('symbol')}: ${float(price):.8f}", flush=True)
                         except Exception:
                             pass
                                 
-                        for addr, pos in list(active_positions.items()):
-                            if addr in price_map and price_map[addr]["price"] > 0:
-                                current_price = price_map[addr]["price"]
+                    # --- CORE EXIT MONITORING LOOP (runs for ALL active positions) ---
+                    for addr, pos in list(active_positions.items()):
+                        current_price = None
+                        
+                        if addr in price_map and price_map[addr]["price"] > 0:
+                            current_price = price_map[addr]["price"]
+                        else:
+                            # Track how many cycles this token has had no price data
+                            pos["no_price_cycles"] = pos.get("no_price_cycles", 0) + 1
+                            print(f"  [WARN] Harga {pos['symbol']} tidak tersedia (Cycle ke-{pos['no_price_cycles']}). Mengaktifkan Emergency SL...", flush=True)
+                            
+                            # EMERGENCY FORCE-CLOSE after 3 consecutive cycles with no price data (likely rug/delisted)
+                            if pos.get("no_price_cycles", 0) >= 3:
                                 entry_price = pos["entry_price"]
-                                highest_price = max(pos["highest_price"], current_price)
-                                pos["highest_price"] = highest_price
+                                exit_price = entry_price * 0.50  # Assume worst case -50% for rugpull
                                 
-                                # Dynamic 96% WR Scalper Trailing & TP Logic
-                                price_gain_pct = ((highest_price - entry_price) / entry_price) * 100
-                                current_pnl_pct = ((current_price - entry_price) / entry_price) * 100
+                                print(f"\n🚨 [EMERGENCY EXIT] {pos['symbol']} tidak memiliki data harga 3 siklus. Kemungkinan RUGGED! Executing market sell...", flush=True)
                                 
-                                # Dynamic Trade Mode Exit Logic
-                                trade_mode = os.getenv("TRADE_MODE", "OPTIMIZED").upper()
+                                raw_qty = int(pos["raw_qty"])
                                 
-                                if trade_mode == "MOONSHOT":
-                                    # MOONSHOT EXIT LOGIC (Wider parameters, lets winners run)
-                                    if price_gain_pct >= 800.0:
-                                        sl_price = highest_price * 0.75  # Trail 25% from peak
-                                        trail_level = "STAGE 3 (25% TSL)"
-                                    elif price_gain_pct >= 300.0:
-                                        sl_price = highest_price * 0.70  # Trail 30% from peak
-                                        trail_level = "STAGE 2 (30% TSL)"
-                                    elif price_gain_pct >= 100.0:
-                                        sl_price = highest_price * 0.65  # Trail 35% from peak
-                                        trail_level = "STAGE 1 (35% TSL)"
-                                    else:
-                                        sl_price = highest_price * 0.70  # Initial SL 30% (No early profit lock)
-                                        trail_level = "MOONSHOT INITIAL SL (30%)"
-                                elif trade_mode == "SCALPER":
-                                    # SCALPER EXIT LOGIC (V13.5 LOCK)
-                                    if price_gain_pct >= 400.0:
-                                        sl_price = highest_price * 0.70
-                                        trail_level = "STAGE 4 (30% TSL)"
-                                    elif price_gain_pct >= 150.0:
-                                        sl_price = highest_price * 0.75
-                                        trail_level = "STAGE 3 (25% TSL)"
-                                    elif price_gain_pct >= 60.0:
-                                        sl_price = highest_price * 0.80
-                                        trail_level = "STAGE 2 (20% TSL)"
-                                    elif price_gain_pct >= 30.0:
-                                        sl_price = entry_price * 1.15
-                                        trail_level = "STAGE 1 (+15% LOCK)"
-                                    elif price_gain_pct >= 15.0:
-                                        sl_price = entry_price * 1.02
-                                        trail_level = "BE-LOCK (+2%)"
-                                    else:
-                                        sl_price = highest_price * 0.80 # 20% Initial SL
-                                        trail_level = "TRAILING SL (20%)"
+                                sell_res = execute_solana_swap(
+                                    input_mint=addr,
+                                    output_mint="So11111111111111111111111111111111111111112", # Swap back to SOL
+                                    amount_lamports=raw_qty,
+                                    slippage_bps=slippage_bps,
+                                    jito_tip_lamports=jito_tip_lamports
+                                )
+                                
+                                if sell_res.get("status") == "success":
+                                    sol_received = float(sell_res["net_out_amount"]) / 1_000_000_000.0
+                                    pnl_sol = sol_received - pos["net_investment_sol"]
+                                    
+                                    print(f"✨ [REAL SELL CONFIRMED] Successfully EMERGENCY sold {pos['symbol']}!", flush=True)
+                                    print(f"   => SOL Received: {sol_received:.6f} SOL | PnL: {pnl_sol:+.6f} SOL", flush=True)
+                                    print(f"   => Tx Signature: {sell_res['explorer_url']}", flush=True)
+                                    
+                                    # Persist 24-hour Cooldown Shield for rugged tokens
+                                    portfolio.setdefault("cooldowns", {})[addr] = time.time() + 86400
+                                    print(f"   => [SHIELD] Alamat {addr} masuk daftar Cooldown 24 Jam.", flush=True)
+                                    
+                                    portfolio["trade_history"].append({
+                                        "symbol": pos["symbol"],
+                                        "address": addr,
+                                        "entry_price": entry_price,
+                                        "exit_price": exit_price,
+                                        "pnl_sol": pnl_sol,
+                                        "tx_signature": sell_res["signature"],
+                                        "closed_at": time.strftime('%Y-%m-%d %H:%M:%S'),
+                                        "exit_reason": "EMERGENCY_FORCE_CLOSE_RUG"
+                                    })
+                                    del active_positions[addr]
+                                    closed_any = True
                                 else:
-                                    # OPTIMIZED HOLY GRAIL V15.0 (Score 75, SL 10%, BE 20% / Lock 2%) - RANK #1
-                                    if price_gain_pct >= 150.0:
-                                        sl_price = highest_price * 0.75  # Trail 25% from peak
-                                        trail_level = "STAGE 3 (25% TSL)"
-                                    elif price_gain_pct >= 60.0:
-                                        sl_price = highest_price * 0.80  # Trail 20% from peak
-                                        trail_level = "STAGE 2 (20% TSL)"
-                                    elif price_gain_pct >= 20.0:
-                                        sl_price = entry_price * 1.02  # Lock +2% profit when hit +20%
-                                        trail_level = "BE-LOCK (+2%)"
-                                    else:
-                                        sl_price = highest_price * 0.90  # Initial SL 10% from peak
-                                        trail_level = "OPTIMIZED INITIAL SL (10%)"
-                                    
-                                print(f"  [TRACKING] {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}% | Guard: {trail_level}", flush=True)
-                                
-                                # --- AUTOMATED ON-CHAIN STOP-LOSS SWAP SELL ---
-                                if current_price <= sl_price:
-                                    print(f"\n🚨 [EXIT TRIGGERED] {trail_level} hit for {pos['symbol']}! Executing real market sell swap...", flush=True)
-                                    
-                                    raw_qty = int(pos["raw_qty"])
-                                    
-                                    sell_res = execute_solana_swap(
-                                        input_mint=addr,
-                                        output_mint="So11111111111111111111111111111111111111112", # Swap back to SOL
-                                        amount_lamports=raw_qty,
-                                        slippage_bps=slippage_bps,
-                                        jito_tip_lamports=jito_tip_lamports
-                                    )
-                                    
-                                    if sell_res.get("status") == "success":
-                                        sol_received = float(sell_res["net_out_amount"]) / 1_000_000_000.0
-                                        pnl_sol = sol_received - pos["net_investment_sol"]
-                                        
-                                        print(f"✨ [REAL SELL CONFIRMED] Successfully sold {pos['symbol']}!", flush=True)
-                                        print(f"   => SOL Received: {sol_received:.6f} SOL | PnL: {pnl_sol:+.6f} SOL", flush=True)
-                                        print(f"   => Tx Signature: {sell_res['explorer_url']}", flush=True)
-                                        
-                                        # Persist 4-hour Cooldown Shield to prevent re-entries
-                                        portfolio.setdefault("cooldowns", {})[addr] = time.time() + 14400
-                                        print(f"   => [SHIELD] Alamat {addr} masuk daftar Cooldown 4 Jam.", flush=True)
-                                        
-                                        portfolio["trade_history"].append({
-                                            "symbol": pos["symbol"],
-                                            "address": addr,
-                                            "entry_price": entry_price,
-                                            "exit_price": current_price if price_gain_pct >= 10.0 else sl_price,
-                                            "pnl_sol": pnl_sol,
-                                            "tx_signature": sell_res["signature"],
-                                            "closed_at": time.strftime('%Y-%m-%d %H:%M:%S')
-                                        })
-                                        del active_positions[addr]
-                                        closed_any = True
-                                    else:
-                                        print(f"[CRITICAL ERROR] Failed to execute stop loss sell transaction: {sell_res.get('message')}", flush=True)
-                                        
+                                    print(f"[CRITICAL ERROR] Failed to execute emergency sell transaction: {sell_res.get('message')}", flush=True)
+                            continue
+                            
+                        # Reset no_price_cycles counter if price is available
+                        pos["no_price_cycles"] = 0
+                        
+                        entry_price = pos["entry_price"]
+                        highest_price = max(pos["highest_price"], current_price)
+                        pos["highest_price"] = highest_price
+                        
+                        # Dynamic 96% WR Scalper Trailing & TP Logic
+                        price_gain_pct = ((highest_price - entry_price) / entry_price) * 100
+                        current_pnl_pct = ((current_price - entry_price) / entry_price) * 100
+                        
+                        # Dynamic Trade Mode Exit Logic
+                        trade_mode = os.getenv("TRADE_MODE", "OPTIMIZED").upper()
+                        
+                        if trade_mode == "MOONSHOT":
+                            # MOONSHOT EXIT LOGIC (Wider parameters, lets winners run)
+                            if price_gain_pct >= 800.0:
+                                sl_price = highest_price * 0.75  # Trail 25% from peak
+                                trail_level = "STAGE 3 (25% TSL)"
+                            elif price_gain_pct >= 300.0:
+                                sl_price = highest_price * 0.70  # Trail 30% from peak
+                                trail_level = "STAGE 2 (30% TSL)"
+                            elif price_gain_pct >= 100.0:
+                                sl_price = highest_price * 0.65  # Trail 35% from peak
+                                trail_level = "STAGE 1 (35% TSL)"
                             else:
-                                print(f"  [WARN] Token {pos['symbol']} price not found on Jupiter API.", flush=True)
+                                sl_price = highest_price * 0.70  # Initial SL 30% (No early profit lock)
+                                trail_level = "MOONSHOT INITIAL SL (30%)"
+                        elif trade_mode == "SCALPER":
+                            # SCALPER EXIT LOGIC (V13.5 LOCK)
+                            if price_gain_pct >= 400.0:
+                                sl_price = highest_price * 0.70
+                                trail_level = "STAGE 4 (30% TSL)"
+                            elif price_gain_pct >= 150.0:
+                                sl_price = highest_price * 0.75
+                                trail_level = "STAGE 3 (25% TSL)"
+                            elif price_gain_pct >= 60.0:
+                                sl_price = highest_price * 0.80
+                                trail_level = "STAGE 2 (20% TSL)"
+                            elif price_gain_pct >= 30.0:
+                                sl_price = entry_price * 1.15
+                                trail_level = "STAGE 1 (+15% LOCK)"
+                            elif price_gain_pct >= 15.0:
+                                sl_price = entry_price * 1.02
+                                trail_level = "BE-LOCK (+2%)"
+                            else:
+                                sl_price = highest_price * 0.80 # 20% Initial SL
+                                trail_level = "TRAILING SL (20%)"
+                        else:
+                            # OPTIMIZED HOLY GRAIL V15.0 (Score 75, SL 10%, BE 20% / Lock 2%) - RANK #1
+                            if price_gain_pct >= 150.0:
+                                sl_price = highest_price * 0.75  # Trail 25% from peak
+                                trail_level = "STAGE 3 (25% TSL)"
+                            elif price_gain_pct >= 60.0:
+                                sl_price = highest_price * 0.80  # Trail 20% from peak
+                                trail_level = "STAGE 2 (20% TSL)"
+                            elif price_gain_pct >= 20.0:
+                                sl_price = entry_price * 1.02  # Lock +2% profit when hit +20%
+                                trail_level = "BE-LOCK (+2%)"
+                            else:
+                                sl_price = highest_price * 0.90  # Initial SL 10% from peak
+                                trail_level = "OPTIMIZED INITIAL SL (10%)"
+                            
+                        print(f"  [TRACKING] {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}% | Guard: {trail_level}", flush=True)
+                        
+                        # --- AUTOMATED ON-CHAIN STOP-LOSS SWAP SELL ---
+                        if current_price <= sl_price:
+                            print(f"\n🚨 [EXIT TRIGGERED] {trail_level} hit for {pos['symbol']}! Executing real market sell swap...", flush=True)
+                            
+                            raw_qty = int(pos["raw_qty"])
+                            
+                            sell_res = execute_solana_swap(
+                                input_mint=addr,
+                                output_mint="So11111111111111111111111111111111111111112", # Swap back to SOL
+                                amount_lamports=raw_qty,
+                                slippage_bps=slippage_bps,
+                                jito_tip_lamports=jito_tip_lamports
+                            )
+                            
+                            if sell_res.get("status") == "success":
+                                sol_received = float(sell_res["net_out_amount"]) / 1_000_000_000.0
+                                pnl_sol = sol_received - pos["net_investment_sol"]
+                                
+                                print(f"✨ [REAL SELL CONFIRMED] Successfully sold {pos['symbol']}!", flush=True)
+                                print(f"   => SOL Received: {sol_received:.6f} SOL | PnL: {pnl_sol:+.6f} SOL", flush=True)
+                                print(f"   => Tx Signature: {sell_res['explorer_url']}", flush=True)
+                                
+                                # Persist 4-hour Cooldown Shield to prevent re-entries
+                                portfolio.setdefault("cooldowns", {})[addr] = time.time() + 14400
+                                print(f"   => [SHIELD] Alamat {addr} masuk daftar Cooldown 4 Jam.", flush=True)
+                                
+                                portfolio["trade_history"].append({
+                                    "symbol": pos["symbol"],
+                                    "address": addr,
+                                    "entry_price": entry_price,
+                                    "exit_price": current_price if price_gain_pct >= 10.0 else sl_price,
+                                    "pnl_sol": pnl_sol,
+                                    "tx_signature": sell_res["signature"],
+                                    "closed_at": time.strftime('%Y-%m-%d %H:%M:%S')
+                                })
+                                del active_positions[addr]
+                                closed_any = True
+                            else:
+                                print(f"[CRITICAL ERROR] Failed to execute stop loss sell transaction: {sell_res.get('message')}", flush=True)
                     else:
                         print(f"  [WARN] Jupiter Price API returned error code: {r.status_code}", flush=True)
                 except Exception as e:
