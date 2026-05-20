@@ -163,25 +163,57 @@ def run_live_real_trader():
                                 price_gain_pct = ((highest_price - entry_price) / entry_price) * 100
                                 current_pnl_pct = ((current_price - entry_price) / entry_price) * 100
                                 
-                                # V13.5 MOONSHOT RUNNER TRAILING & LOCK LOGIC
-                                if price_gain_pct >= 400.0:
-                                    sl_price = highest_price * 0.70  # Trailing 30% from peak for mega runners
-                                    trail_level = "STAGE 4 (400%+ -> 30% TSL)"
-                                elif price_gain_pct >= 150.0:
-                                    sl_price = highest_price * 0.75  # Trailing 25% from peak
-                                    trail_level = "STAGE 3 (150%+ -> 25% TSL)"
-                                elif price_gain_pct >= 60.0:
-                                    sl_price = highest_price * 0.80  # Trailing 20% from peak
-                                    trail_level = "STAGE 2 (60%+ -> 20% TSL)"
-                                elif price_gain_pct >= 30.0:
-                                    sl_price = entry_price * 1.15  # Lock +15% profit
-                                    trail_level = "STAGE 1 (+15% LOCK)"
-                                elif price_gain_pct >= 15.0:
-                                    sl_price = entry_price * 1.02  # Breakeven Lock +2%
-                                    trail_level = "BE-LOCK (+2%)"
+                                # Dynamic Trade Mode Exit Logic
+                                trade_mode = os.getenv("TRADE_MODE", "OPTIMIZED").upper()
+                                
+                                if trade_mode == "MOONSHOT":
+                                    # MOONSHOT EXIT LOGIC (Wider parameters, lets winners run)
+                                    if price_gain_pct >= 800.0:
+                                        sl_price = highest_price * 0.75  # Trail 25% from peak
+                                        trail_level = "STAGE 3 (25% TSL)"
+                                    elif price_gain_pct >= 300.0:
+                                        sl_price = highest_price * 0.70  # Trail 30% from peak
+                                        trail_level = "STAGE 2 (30% TSL)"
+                                    elif price_gain_pct >= 100.0:
+                                        sl_price = highest_price * 0.65  # Trail 35% from peak
+                                        trail_level = "STAGE 1 (35% TSL)"
+                                    else:
+                                        sl_price = highest_price * 0.70  # Initial SL 30% (No early profit lock)
+                                        trail_level = "MOONSHOT INITIAL SL (30%)"
+                                elif trade_mode == "SCALPER":
+                                    # SCALPER EXIT LOGIC (V13.5 LOCK)
+                                    if price_gain_pct >= 400.0:
+                                        sl_price = highest_price * 0.70
+                                        trail_level = "STAGE 4 (30% TSL)"
+                                    elif price_gain_pct >= 150.0:
+                                        sl_price = highest_price * 0.75
+                                        trail_level = "STAGE 3 (25% TSL)"
+                                    elif price_gain_pct >= 60.0:
+                                        sl_price = highest_price * 0.80
+                                        trail_level = "STAGE 2 (20% TSL)"
+                                    elif price_gain_pct >= 30.0:
+                                        sl_price = entry_price * 1.15
+                                        trail_level = "STAGE 1 (+15% LOCK)"
+                                    elif price_gain_pct >= 15.0:
+                                        sl_price = entry_price * 1.02
+                                        trail_level = "BE-LOCK (+2%)"
+                                    else:
+                                        sl_price = highest_price * 0.80 # 20% Initial SL
+                                        trail_level = "TRAILING SL (20%)"
                                 else:
-                                    sl_price = highest_price * 0.80  # Initial Stop Loss 20% from peak
-                                    trail_level = "TRAILING SL (20%)"
+                                    # OPTIMIZED HOLY GRAIL V15.0 (Score 75, SL 10%, BE 20% / Lock 2%) - RANK #1
+                                    if price_gain_pct >= 150.0:
+                                        sl_price = highest_price * 0.75  # Trail 25% from peak
+                                        trail_level = "STAGE 3 (25% TSL)"
+                                    elif price_gain_pct >= 60.0:
+                                        sl_price = highest_price * 0.80  # Trail 20% from peak
+                                        trail_level = "STAGE 2 (20% TSL)"
+                                    elif price_gain_pct >= 20.0:
+                                        sl_price = entry_price * 1.02  # Lock +2% profit when hit +20%
+                                        trail_level = "BE-LOCK (+2%)"
+                                    else:
+                                        sl_price = highest_price * 0.90  # Initial SL 10% from peak
+                                        trail_level = "OPTIMIZED INITIAL SL (10%)"
                                     
                                 print(f"  [TRACKING] {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}% | Guard: {trail_level}", flush=True)
                                 
@@ -265,7 +297,8 @@ def run_live_real_trader():
                         
                         print(f"  [SCANNER] Auditing candidate {gem['symbol']} | Safety Status: {security['status']} | Score: {score}/100", flush=True)
                         
-                        if security["status"] in ["CLEAN & SAFE", "WARNINGS"] and score >= 70:
+                        min_entry_score = int(os.getenv("MIN_ENTRY_SCORE", "75"))
+                        if security["status"] in ["CLEAN & SAFE", "WARNINGS"] and score >= min_entry_score:
                             if score > best_score:
                                 best_score = score
                                 best_candidate = gem

@@ -55,10 +55,12 @@ def check_token_security(chain: str, address: str) -> dict:
     # ------------------------------------------------------------------------
     if chain.lower() == "solana":
         # Lapis 1: RugCheck.xyz Report API
+        rugcheck_ok = False
         try:
             rug_url = f"https://api.rugcheck.xyz/v1/tokens/{address}/report"
             r = requests.get(rug_url, timeout=5)
             if r.status_code == 200:
+                rugcheck_ok = True
                 data = r.json()
                 score = data.get("score", 0)
                 risk_level = data.get("riskLevel", "Good")
@@ -80,8 +82,12 @@ def check_token_security(chain: str, address: str) -> dict:
                     if risk_level == "danger" or any(x in risk_name for x in ["unlocked", "mutable", "single holder", "mintable"]):
                         flags.append(f"RC_{risk.get('name', '').upper().replace(' ', '_')}")
                         is_safe = False
-        except Exception:
-            pass # Silently fall back to GoPlus if RugCheck times out or is throttled
+            else:
+                flags.append(f"RUGCHECK_API_ERROR_STATUS_{r.status_code}")
+                is_safe = False
+        except Exception as e:
+            flags.append(f"RUGCHECK_TIMEOUT_FAILED_{type(e).__name__}")
+            is_safe = False
 
         # Lapis 2: GoPlus Solana API
         try:
@@ -240,11 +246,11 @@ def calculate_gem_score(pair_data: dict, security: dict) -> int:
     # NEW SIGNAL 1: Token Age Window (Optimal Entry Timing)
     # Too young = developer can still rug. Too old = pump already over.
     age_sec = pair_data.get("age_estimate_sec", 3600)
-    if 900 <= age_sec <= 21600:   # Sweet spot: 15 min - 6 hours
+    if 300 <= age_sec <= 10800:   # Sweet spot: 5 min - 3 hours (early entry allowed since security is mandatory)
         score += 20
-    elif age_sec < 900:           # < 15 minutes: dangerously early
+    elif age_sec < 300:           # < 5 minutes: dangerously early
         score -= 40
-    elif age_sec > 86400:         # > 24 hours: momentum likely exhausted
+    elif age_sec > 43200:         # > 12 hours: momentum likely exhausted
         score -= 20
 
     # NEW SIGNAL 2: Volume Acceleration (Is momentum GROWING right now?)
@@ -260,6 +266,15 @@ def calculate_gem_score(pair_data: dict, security: dict) -> int:
             score += 8   # Volume above average = healthy uptrend
         elif vol_accel < 0.5:
             score -= 10  # Volume drying up = trend is dying
+
+    # V15.0 5-Minute Volume Surge check (Micro-breakout sensor)
+    vol_5m = float(pair_data.get("volume_5m", 0) or 0)
+    avg_5m_vol = vol_1h / 12.0
+    vol_surge_5m = vol_5m / avg_5m_vol if avg_5m_vol > 0 else 1.0
+    if vol_surge_5m >= 2.5:
+        score += 15  # Strong micro volume surge
+    elif vol_surge_5m < 0.8:
+        score -= 15  # Volume stalling/dry-up
 
     # NEW SIGNAL 3: Active Boosts (Someone paying RIGHT NOW to promote this)
     active_boosts = pair_data.get("boosts_active", 0)
@@ -338,17 +353,18 @@ def calculate_gem_score(pair_data: dict, security: dict) -> int:
     p5m = float(pair_data.get("price_change_5m", 0) or 0)
     p1h = float(pair_data.get("price_change_1h", 0) or 0)
     
-    # A. FOMO Shield: Anti-Top Buying (Vertical lines are dangerous!)
-    if p5m > 150.0 or p1h > 500.0:
-        score -= 25 # Highly overbought! Deduct points to prevent buying the top.
+    # A. FOMO Shield: Anti-Overbought / Anti-Top Buying (V15.0 strict limit)
+    # Reject entry if 5m price change > 45% or 1h price change > 150%
+    if p5m > 45.0 or p1h > 150.0:
+        score -= 45 # Highly overbought! Deduct heavily to prevent top-buying
     
-    # B. Consolidation Support Finder (Optimal pullback buy point)
-    elif 30.0 <= p1h <= 200.0 and -15.0 <= p5m <= 20.0:
-        score += 10 # Healthy pullback/consolidation. Great entry point!
+    # B. Consolidation Support Finder / Early Momentum (Optimal entry timing)
+    elif 5.0 <= p5m <= 40.0 and p1h <= 100.0:
+        score += 15 # Healthy early surge / consolidation entry
         
     # C. Severe Dump Protection (Falling knife safety)
-    elif p5m < -40.0:
-        score -= 20 # Avoid panic selling momentum.
+    elif p5m < -25.0:
+        score -= 30 # Avoid falling knife dump tokens
 
     # 8. DexScreener Verified Paid Orders Bonus (V6 Premium legitimacy Check)
     if pair_data.get("has_paid_order"):
