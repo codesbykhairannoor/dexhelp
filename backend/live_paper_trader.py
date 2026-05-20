@@ -140,17 +140,32 @@ def run_live_paper_trader():
                         "Accept": "application/json"
                     }
                     
+                    price_map = {}
                     r = requests.get(url, headers=headers, timeout=5)
                     if r.status_code == 200:
                         res = r.json()
-                        
-                        # Map latest price per token
-                        price_map = {}
+                        data = res.get("data", {}) if "data" in res else res
                         for addr in addr_list:
-                            tinfo = res.get("data", {}).get(addr, {}) if "data" in res else res.get(addr, {})
-                            price = tinfo.get("usdPrice")
+                            tinfo = data.get(addr, {})
+                            price = tinfo.get("usdPrice") or tinfo.get("price")
                             if price is not None:
                                 price_map[addr] = {"price": float(price)}
+                                
+                    # Fallback: query DexScreener API for any token missing price info
+                    missing_addrs = [addr for addr in addr_list if addr not in price_map]
+                    for addr in missing_addrs:
+                        try:
+                            ds_url = f"https://api.dexscreener.com/latest/dex/tokens/{addr}"
+                            ds_res = requests.get(ds_url, timeout=5).json()
+                            pairs = ds_res.get("pairs", []) or []
+                            if pairs:
+                                pairs.sort(key=lambda x: float(x.get("liquidity", {}).get("usd", 0) or 0), reverse=True)
+                                price = pairs[0].get("priceUsd")
+                                if price is not None:
+                                    price_map[addr] = {"price": float(price)}
+                                    # print(f"  [FEED] Fallback sukses via DexScreener untuk {pairs[0].get('baseToken', {}).get('symbol')}: ${float(price):.8f}")
+                        except Exception:
+                            pass
                         
                         for addr, pos in list(active_positions.items()):
                             if addr in price_map and price_map[addr]["price"] > 0:

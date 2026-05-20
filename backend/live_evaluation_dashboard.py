@@ -58,9 +58,10 @@ def run_evaluation_dashboard():
         if addr and addr not in tokens_to_query:
             tokens_to_query.append(addr)
             
-    # Fetch live prices for selected tokens
+    # Fetch live prices for selected tokens using Jupiter + DexScreener Fallback
     price_map = {}
     if tokens_to_query:
+        # 1. Try Jupiter Price API
         addr_str = ",".join(tokens_to_query)
         url = f"https://api.jup.ag/price/v3?ids={addr_str}"
         headers = {"x-api-key": jupiter_key, "Accept": "application/json"}
@@ -68,13 +69,29 @@ def run_evaluation_dashboard():
             r = requests.get(url, headers=headers, timeout=5)
             if r.status_code == 200:
                 res = r.json()
+                data = res.get("data", {}) if "data" in res else res
                 for addr in tokens_to_query:
-                    tinfo = res.get("data", {}).get(addr, {}) if "data" in res else res.get(addr, {})
-                    price = tinfo.get("usdPrice")
+                    tinfo = data.get(addr, {})
+                    price = tinfo.get("usdPrice") or tinfo.get("price")
                     if price is not None:
                         price_map[addr] = float(price)
         except Exception:
             pass
+            
+        # 2. Fallback to DexScreener for any missing prices
+        missing_addrs = [addr for addr in tokens_to_query if addr not in price_map]
+        for addr in missing_addrs:
+            try:
+                ds_url = f"https://api.dexscreener.com/latest/dex/tokens/{addr}"
+                res = requests.get(ds_url, timeout=5).json()
+                pairs = res.get("pairs", []) or []
+                if pairs:
+                    pairs.sort(key=lambda x: float(x.get("liquidity", {}).get("usd", 0) or 0), reverse=True)
+                    price = pairs[0].get("priceUsd")
+                    if price is not None:
+                        price_map[addr] = float(price)
+            except Exception:
+                pass
 
     # --- CALCULATIONS ---
     total_active_value = 0.0
@@ -104,9 +121,26 @@ def run_evaluation_dashboard():
     net_pnl_usd = total_portfolio_value - initial_capital
     net_pnl_pct = (net_pnl_usd / initial_capital) * 100 if initial_capital > 0 else 0.0
     
-    # Win rate analytics
-    wins = [t for t in trade_history if t.get("pnl_usd", 0) >= 0 or t.get("pnl_sol", 0) >= 0]
-    losses = [t for t in trade_history if t.get("pnl_usd", 0) < 0 or t.get("pnl_sol", 0) < 0]
+    # Win rate analytics (Fix: Prevent default 0 from making all paper losses count as wins)
+    wins = []
+    losses = []
+    for t in trade_history:
+        pnl = None
+        if "pnl_pct" in t:
+            pnl = t["pnl_pct"]
+        elif "pnl_usd" in t:
+            pnl = t["pnl_usd"]
+        elif "pnl_sol" in t:
+            pnl = t["pnl_sol"]
+            
+        if pnl is not None:
+            if pnl >= 0:
+                wins.append(t)
+            else:
+                losses.append(t)
+        else:
+            wins.append(t)  # Fallback for empty transactions
+            
     total_closed_trades = len(trade_history)
     win_rate = (len(wins) / total_closed_trades * 100) if total_closed_trades > 0 else 0.0
     
