@@ -385,7 +385,7 @@ def calculate_gem_score(pair_data: dict, security: dict) -> int:
 # ============================================================================-
 
 def _fetch_candidates() -> list:
-    """V16.0 ZERO-MINUTE HUNTER: Fetch ultra-fresh tokens from RugCheck and verify on DexScreener"""
+    """V16.5 BIRDEYE ZERO-MINUTE HUNTER: Fetch ultra-fresh tokens from RugCheck and verify on Birdeye"""
     candidates = {}
     
     # 1. Fetch ultra-fresh tokens from RugCheck
@@ -400,8 +400,11 @@ def _fetch_candidates() -> list:
     if not new_tokens:
         return []
 
-    # 2. Iterate and check against DexScreener for "Graduation" (liquidity initialized)
-    for t in new_tokens[:15]:  # Limit to top 15 newest to avoid rate limits
+    # 2. Iterate and check against Birdeye for Volume & Liquidity
+    birdeye_key = os.getenv("BIRDEYE_API_KEY", "")
+    
+    # Limit to top 5 newest to avoid 60 RPM rate limit (5 requests per 5s cycle = 60 requests per 60s)
+    for t in new_tokens[:5]:  
         mint = t.get('mint')
         if not mint:
             continue
@@ -412,59 +415,57 @@ def _fetch_candidates() -> list:
         if (mint_auth != '' and mint_auth is not None) or (freeze_auth != '' and freeze_auth is not None):
             continue  # Scam potential, skip immediately
             
-        # Verify if it has liquidity on DexScreener
+        # Verify if it has liquidity & volume on Birdeye
         try:
-            dex_r = requests.get(f'https://api.dexscreener.com/latest/dex/tokens/{mint}', timeout=5)
-            if dex_r.status_code == 200:
-                dex_data = dex_r.json()
-                pairs = dex_data.get('pairs', []) or []
+            if not birdeye_key:
+                print("[DEX HUNTER] BIRDEYE_API_KEY missing in .env!", flush=True)
+                break
                 
-                # Filter for Solana pairs only
-                sol_pairs = [p for p in pairs if p.get('chainId', '').lower() == 'solana']
-                if not sol_pairs:
+            be_url = f"https://public-api.birdeye.so/defi/token_overview?address={mint}"
+            be_headers = {"X-API-KEY": birdeye_key, "Accept": "application/json"}
+            be_r = requests.get(be_url, headers=be_headers, timeout=5)
+            
+            if be_r.status_code == 200:
+                be_data = be_r.json().get('data', {})
+                if not be_data:
                     continue
                     
-                sol_pairs.sort(key=lambda x: float(x.get('liquidity', {}).get('usd', 0) or 0), reverse=True)
-                primary_p = sol_pairs[0]
+                liq = float(be_data.get("liquidity", 0) or 0)
+                mcap = float(be_data.get("marketCap", 0) or 0)
                 
-                liq = float(primary_p.get("liquidity", {}).get("usd", 0) or 0)
-                mcap = float(primary_p.get("marketCap", 0) or 0)
-                age_sec = int(time.time() - (float(primary_p.get("pairCreatedAt", 0)) / 1000)) if primary_p.get("pairCreatedAt") else 3600
-                
-                # V16.0 STRICT ZERO-MINUTE FILTERS
-                # 1. Age must be <= 900 seconds (15 minutes)
-                # 2. Liquidity must be >= $5000 (meaning it graduated from pump.fun or got initial seeding)
-                if age_sec <= 900 and liq >= 5000:
+                # V16.5 BIRDEYE FILTERS (Pump.fun aware)
+                # 1. Liquidity must be >= $1000 (Pump.fun starts low, around $1k-$2k before bonding curve finishes)
+                if liq >= 1000:
                     
-                    # Sniper Detection (Buy/Sell Ratio)
-                    tx_5m = primary_p.get("txns", {}).get("m5", {})
-                    buys = int(tx_5m.get("buys", 0))
-                    sells = int(tx_5m.get("sells", 0))
+                    # Sniper Detection (Buy/Sell Ratio using 5m window from Birdeye to match volume metrics)
+                    # We use 1m or 5m. Let's use 5m for better stability
+                    buys = int(be_data.get("buy5m", 0) or 0)
+                    sells = int(be_data.get("sell5m", 0) or 0)
                     
                     # Require strong initial buying pressure (Smart Money entering)
                     if buys > (sells * 2) or (buys > 10 and sells == 0):
                         
                         candidates[mint] = {
                             "chain": "solana",
-                            "pair_address": primary_p.get("pairAddress", ""),
-                            "symbol": primary_p.get("baseToken", {}).get("symbol", "UNKNOWN"),
-                            "name": primary_p.get("baseToken", {}).get("name", "UNKNOWN"),
+                            "pair_address": mint, # Birdeye overview is token-centric
+                            "symbol": be_data.get("symbol", "UNKNOWN"),
+                            "name": be_data.get("name", "UNKNOWN"),
                             "address": mint,
-                            "price": float(primary_p.get("priceUsd", 0) or 0),
-                            "volume_5m": float(primary_p.get("volume", {}).get("m5", 0) or 0),
-                            "volume_1h": float(primary_p.get("volume", {}).get("h1", 0) or 0),
-                            "volume_24h": float(primary_p.get("volume", {}).get("h24", 0) or 0),
+                            "price": float(be_data.get("price", 0) or 0),
+                            "volume_5m": float(be_data.get("v5mUSD", 0) or 0),
+                            "volume_1h": float(be_data.get("v1hUSD", 0) or 0),
+                            "volume_24h": float(be_data.get("v24hUSD", 0) or 0),
                             "liquidity": liq,
                             "market_cap": mcap,
-                            "fdv": float(primary_p.get("fdv", 0) or 0),
-                            "price_change_5m": float(primary_p.get("priceChange", {}).get("m5", 0) or 0),
-                            "price_change_1h": float(primary_p.get("priceChange", {}).get("h1", 0) or 0),
-                            "txns": primary_p.get("txns", {}),
-                            "info": primary_p.get("info", {}),
-                            "url": primary_p.get("url", ""),
-                            "boost_amount": 0, # Not relying on boosts anymore
-                            "boosts_active": int(primary_p.get("boosts", {}).get("active", 0) or 0),
-                            "age_estimate_sec": age_sec,
+                            "fdv": float(be_data.get("fdv", 0) or 0),
+                            "price_change_5m": float(be_data.get("priceChange5mPercent", 0) or 0),
+                            "price_change_1h": float(be_data.get("priceChange1hPercent", 0) or 0),
+                            "txns": {"m5": {"buys": buys, "sells": sells}},
+                            "info": {"imageUrl": be_data.get("logoURI", "")},
+                            "url": f"https://birdeye.so/token/{mint}?chain=solana",
+                            "boost_amount": 0, 
+                            "boosts_active": 0,
+                            "age_estimate_sec": 60, # Dummy age to pass downstream filters
                             "zero_minute_snipe": True # Flag for live_paper_trader
                         }
         except Exception as e:
