@@ -3,6 +3,9 @@ import sys
 import time
 import json
 import requests
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Fix module imports when executed from external cwd (like PM2)
 CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))

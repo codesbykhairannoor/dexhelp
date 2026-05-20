@@ -5,6 +5,10 @@ import requests
 import time
 import threading
 from collections import defaultdict
+from dotenv import load_dotenv
+
+# Load env vars explicitly
+load_dotenv()
 
 # ============================================================================-
 #  CONFIG & INITIALIZATION
