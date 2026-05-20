@@ -195,8 +195,8 @@ def run_live_paper_trader():
                                     sl_price = entry_price * 1.02  # Breakeven Lock +2%
                                     trail_level = "BE-LOCK (+2%)"
                                 else:
-                                    sl_price = highest_price * 0.85  # Initial Stop Loss 15% from peak
-                                    trail_level = "TRAILING SL (15%)"
+                                    sl_price = highest_price * 0.80  # Initial Stop Loss 20% from peak
+                                    trail_level = "TRAILING SL (20%)"
                                     
                                 print(f"  [POSITION] {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | Puncak: ${highest_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}% | Guard: {trail_level}")
                                 
