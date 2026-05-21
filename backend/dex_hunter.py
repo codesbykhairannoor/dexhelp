@@ -410,8 +410,10 @@ def _fetch_candidates() -> list:
     # 2. Iterate and check against Birdeye for Volume & Liquidity
     birdeye_key = os.getenv("BIRDEYE_API_KEY", "")
     
-    # Scan tokens at index 15 to 20 (roughly 2-3 mins old) so they have time to build $10k+ liquidity and volume
-    for t in new_tokens[15:20]:  
+    # Scan older tokens to allow $10k+ liquidity and volume to build.
+    # If list is small, take the oldest available up to index 15.
+    offset = min(15, max(0, len(new_tokens) - 5))
+    for t in new_tokens[offset:offset+5]:  
         mint = t.get('mint')
         if not mint:
             continue
