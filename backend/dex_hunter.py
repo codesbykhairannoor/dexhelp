@@ -407,99 +407,100 @@ def _fetch_candidates() -> list:
     if not new_tokens:
         return []
 
-    # 2. Iterate and check against Birdeye for Volume & Liquidity
-    birdeye_key = os.getenv("BIRDEYE_API_KEY", "")
+    # 2. Extract mints for bulk query to DexScreener
+    # We will query up to 30 tokens from RugCheck.
+    offset = min(15, max(0, len(new_tokens) - 30))
+    target_tokens = new_tokens[offset:offset+30]
     
-    # Scan older tokens to allow $10k+ liquidity and volume to build.
-    # If list is small, take the oldest available up to index 15.
-    offset = min(15, max(0, len(new_tokens) - 5))
-    for t in new_tokens[offset:offset+5]:  
+    mints = []
+    for t in target_tokens:
         mint = t.get('mint')
-        if not mint:
-            continue
-            
-        # Basic pre-filter: Token MUST be safe on chain (no mint/freeze authority)
         mint_auth = t.get('mintAuthority', '')
         freeze_auth = t.get('freezeAuthority', '')
-        if (mint_auth != '' and mint_auth is not None) or (freeze_auth != '' and freeze_auth is not None):
-            continue  # Scam potential, skip immediately
+        # Basic pre-filter: Token MUST be safe on chain
+        if mint and not mint_auth and not freeze_auth:
+            mints.append(mint)
             
-        # Verify if it has liquidity & volume on Birdeye
-        try:
-            if not birdeye_key:
-                print("[DEX HUNTER] BIRDEYE_API_KEY missing in .env!", flush=True)
-                break
-                
-            be_url = f"https://public-api.birdeye.so/defi/token_overview?address={mint}"
-            be_headers = {"X-API-KEY": birdeye_key, "Accept": "application/json"}
-            be_r = requests.get(be_url, headers=be_headers, timeout=5)
+    if not mints:
+        return []
+        
+    # 3. Bulk query DexScreener (100% FREE, NO LIMITS)
+    mints_str = ",".join(mints)
+    try:
+        ds_url = f"https://api.dexscreener.com/latest/dex/tokens/{mints_str}"
+        ds_r = requests.get(ds_url, timeout=5)
+        
+        if ds_r.status_code == 200:
+            pairs = ds_r.json().get('pairs', [])
             
-            if be_r.status_code == 200:
-                be_data = be_r.json().get('data', {})
-                if not be_data:
+            # Since a token can have multiple pairs, group by baseToken address and find the best pool (highest liquidity)
+            best_pairs = {}
+            for pair in pairs:
+                if pair.get('chainId') != 'solana':
                     continue
                     
-                liq = float(be_data.get("liquidity", 0) or 0)
-                mcap = float(be_data.get("marketCap", 0) or 0)
+                base_addr = pair.get('baseToken', {}).get('address')
+                if not base_addr or base_addr not in mints:
+                    continue
+                    
+                liq = float(pair.get('liquidity', {}).get('usd', 0) or 0)
+                if base_addr not in best_pairs or liq > float(best_pairs[base_addr].get('liquidity', {}).get('usd', 0) or 0):
+                    best_pairs[base_addr] = pair
+                    
+            for mint, pair in best_pairs.items():
+                liq = float(pair.get('liquidity', {}).get('usd', 0) or 0)
+                v5m = float(pair.get('volume', {}).get('m5', 0) or 0)
+                buys = int(pair.get('txns', {}).get('m5', {}).get('buys', 0) or 0)
+                sells = int(pair.get('txns', {}).get('m5', {}).get('sells', 0) or 0)
+                trade5m = buys + sells
+                symbol = pair.get('baseToken', {}).get('symbol', 'UNKNOWN')
                 
-                # V16.7 BIRDEYE ULTRA-STRICT QUALITY FILTERS FOR PUMP.FUN
-                unique_wallets_5m = int(be_data.get("uniqueWallet5m", 0) or 0)
-                v5m = float(be_data.get("v5mUSD", 0) or 0)
-                trade5m = int(be_data.get("trade5m", 0) or 0)
+                print(f"  [AUDIT] {symbol} | Liq: ${liq:.0f} | Vol5m: ${v5m:.0f} | Trades: {trade5m} | Buys/Sells: {buys}/{sells}")
                 
-                print(f"  [AUDIT] {be_data.get('symbol', 'UNKNOWN')} | Liq: ${liq:.0f} | Vol5m: ${v5m:.0f} | Trades: {trade5m} | Wallets: {unique_wallets_5m}")
-                
-                # 1. Require higher minimum liquidity to ensure a solid orderbook base
+                # V17.0 DEXSCREENER ULTRA-STRICT QUALITY FILTERS
                 if liq >= 10000:
-                    # 2. Require Social Presence (serious projects fill out socials, scams don't)
-                    extensions = be_data.get("extensions", {}) or {}
-                    has_social = bool(extensions.get("twitter") or extensions.get("telegram") or extensions.get("website"))
+                    # Require Social Presence
+                    info = pair.get("info", {})
+                    has_social = bool(info.get("websites") or info.get("socials"))
                     if not has_social:
-                        print(f"    -> [DITOLAK] Tidak ada link sosial (Twitter/Telegram). Kemungkinan scam.")
+                        print(f"    -> [DITOLAK] Tidak ada link sosial (Website/Twitter/Telegram). Kemungkinan scam.")
                         continue
                         
-                    # 3. Require High Organic Activity (Filter out single-wallet bundlers and dead pools)
-                    if unique_wallets_5m < 20 or v5m < 2500 or trade5m < 40:
-                        print(f"    -> [DITOLAK] Aktivitas tidak organik (Syarat: 20 Wallets, $2.5k Vol, 40 Trades).")
+                    # Organic Activity Proxy
+                    if trade5m < 40 or v5m < 2500:
+                        print(f"    -> [DITOLAK] Aktivitas tidak organik (Syarat: $2.5k Vol, 40 Trades).")
                         continue
-
-                    # 4. Require strong buying pressure (Smart Money entering)
-                    buys = int(be_data.get("buy5m", 0) or 0)
-                    sells = int(be_data.get("sell5m", 0) or 0)
+                        
+                    # Strong buying pressure
                     if buys >= 15 and (buys > (sells * 2) or (buys > 15 and sells == 0)):
-                        
                         candidates[mint] = {
                             "chain": "solana",
-                            "pair_address": mint, # Birdeye overview is token-centric
-                            "symbol": be_data.get("symbol", "UNKNOWN"),
-                            "name": be_data.get("name", "UNKNOWN"),
+                            "pair_address": pair.get('pairAddress'),
+                            "symbol": symbol,
+                            "name": pair.get('baseToken', {}).get('name', 'UNKNOWN'),
                             "address": mint,
-                            "price": float(be_data.get("price", 0) or 0),
+                            "price": float(pair.get('priceUsd', 0) or 0),
                             "volume_5m": v5m,
-                            "volume_1h": float(be_data.get("v1hUSD", 0) or 0),
-                            "volume_24h": float(be_data.get("v24hUSD", 0) or 0),
+                            "volume_1h": float(pair.get('volume', {}).get('h1', 0) or 0),
+                            "volume_24h": float(pair.get('volume', {}).get('h24', 0) or 0),
                             "liquidity": liq,
-                            "market_cap": mcap,
-                            "fdv": float(be_data.get("fdv", 0) or 0),
-                            "price_change_5m": float(be_data.get("priceChange5mPercent", 0) or 0),
-                            "price_change_1h": float(be_data.get("priceChange1hPercent", 0) or 0),
+                            "market_cap": float(pair.get('marketCap', 0) or pair.get('fdv', 0) or 0),
+                            "fdv": float(pair.get('fdv', 0) or 0),
+                            "price_change_5m": float(pair.get('priceChange', {}).get('m5', 0) or 0),
+                            "price_change_1h": float(pair.get('priceChange', {}).get('h1', 0) or 0),
                             "txns": {"m5": {"buys": buys, "sells": sells}},
-                            "info": {"imageUrl": be_data.get("logoURI", "")},
-                            "url": f"https://birdeye.so/token/{mint}?chain=solana",
-                            "boost_amount": 0, 
+                            "info": {"imageUrl": info.get('imageUrl', "")},
+                            "url": pair.get('url', f"https://dexscreener.com/solana/{mint}"),
+                            "boost_amount": 0,
                             "boosts_active": 0,
-                            "age_estimate_sec": 60, # Dummy age to pass downstream filters
-                            "zero_minute_snipe": True # Flag for live_paper_trader
+                            "age_estimate_sec": 60,
+                            "zero_minute_snipe": True
                         }
-            else:
-                try:
-                    error_msg = be_r.json().get('message', 'Unknown Error')
-                except Exception:
-                    error_msg = be_r.text[:50]
-                print(f"  [WARN] API Birdeye Error ({be_r.status_code}): {error_msg}")
-        except Exception as e:
-            pass
-            
+        else:
+            print(f"  [WARN] API DexScreener Error ({ds_r.status_code}): {ds_r.text[:50]}")
+    except Exception as e:
+        print(f"  [WARN] Gagal menghubungi DexScreener: {e}")
+        
     return list(candidates.values())
 
 def _scan_pipeline():
