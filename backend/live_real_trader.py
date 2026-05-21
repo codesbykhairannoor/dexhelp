@@ -121,54 +121,71 @@ def run_live_real_trader():
                 print(f"[INFO] Monitoring {len(active_positions)} active on-chain positions...")
                 try:
                     addr_list = list(active_positions.keys())
-                    addr_str = ",".join(addr_list)
-                    url = f"https://api.jup.ag/price/v3?ids={addr_str}"
-                    headers = {"x-api-key": jup_api_key} if jup_api_key else {}
-                    
-                    price_map = {}
-                    r = requests.get(url, headers=headers, timeout=5)
-                    if r.status_code == 200:
-                        res = r.json()
-                        data = res.get("data", {}) if "data" in res else res
-                        for addr in addr_list:
-                            tinfo = data.get(addr, {})
-                            price = tinfo.get("usdPrice") or tinfo.get("price")
-                            if price is not None:
-                                price_map[addr] = {"price": float(price)}
-                                
-                    # Fallback 1: query Birdeye API for any token missing price info
+                    try:
+                        addr_str = ",".join(addr_list)
+                        url = f"https://api.jup.ag/price/v3?ids={addr_str}"
+                        headers = {"x-api-key": jup_api_key} if jup_api_key else {}
+                        
+                        price_map = {}
+                        r = requests.get(url, headers=headers, timeout=5)
+                        if r.status_code == 200:
+                            res = r.json()
+                            data = res.get("data", {}) if "data" in res else res
+                            for addr in addr_list:
+                                tinfo = data.get(addr, {})
+                                price = tinfo.get("usdPrice") or tinfo.get("price")
+                                if price is not None:
+                                    price_map[addr] = {"price": float(price)}
+                    except Exception:
+                        pass
+                                    
+                    # Fallback 1: Query DexScreener bulk pricing API (Free, high rate limit)
+                    missing_addrs = [addr for addr in addr_list if addr not in price_map]
+                    if missing_addrs:
+                        try:
+                            ds_addrs_str = ",".join(missing_addrs)
+                            ds_url = f"https://api.dexscreener.com/latest/dex/tokens/{ds_addrs_str}"
+                            ds_res = requests.get(ds_url, timeout=5).json()
+                            pairs = ds_res.get("pairs", []) or []
+                            for pair in pairs:
+                                base_addr = pair.get("baseToken", {}).get("address")
+                                price = pair.get("priceUsd")
+                                if base_addr and price is not None:
+                                    liq = float(pair.get("liquidity", {}).get("usd", 0) or 0)
+                                    if base_addr not in price_map or liq > price_map[base_addr].get("liq", 0):
+                                        price_map[base_addr] = {"price": float(price), "liq": liq}
+                        except Exception:
+                            pass
+ 
+                    # Fallback 2: Paced Birdeye Single-API Query (Limit to 1 query per cycle, min 15s cooldown per token)
+                    if not hasattr(run_live_real_trader, "last_be_query"):
+                        run_live_real_trader.last_be_query = {}
+                        
                     missing_addrs = [addr for addr in addr_list if addr not in price_map]
                     if missing_addrs:
                         birdeye_key = os.getenv("BIRDEYE_API_KEY", "")
                         if birdeye_key:
-                            for addr in missing_addrs:
+                            now = time.time()
+                            # Sort missing addresses by how long ago they were queried to pace properly
+                            missing_addrs.sort(key=lambda x: run_live_real_trader.last_be_query.get(x, 0))
+                            oldest_addr = missing_addrs[0]
+                            last_time = run_live_real_trader.last_be_query.get(oldest_addr, 0)
+                            
+                            if now - last_time >= 15.0:
                                 try:
-                                    be_url = f"https://public-api.birdeye.so/defi/price?address={addr}"
+                                    be_url = f"https://public-api.birdeye.so/defi/price?address={oldest_addr}"
                                     be_headers = {"X-API-KEY": birdeye_key, "Accept": "application/json"}
                                     be_res = requests.get(be_url, headers=be_headers, timeout=5).json()
+                                    run_live_real_trader.last_be_query[oldest_addr] = now
                                     if be_res.get("success"):
                                         price = be_res.get("data", {}).get("value")
                                         if price is not None:
-                                            price_map[addr] = {"price": float(price)}
-                                            # print(f"  [FEED] Fallback sukses via Birdeye untuk {addr}")
+                                            price_map[oldest_addr] = {"price": float(price)}
                                 except Exception:
                                     pass
-
-                    # Fallback 2: query DexScreener API for any token still missing price info
-                    missing_addrs = [addr for addr in addr_list if addr not in price_map]
-                    for addr in missing_addrs:
-                        try:
-                            ds_url = f"https://api.dexscreener.com/latest/dex/tokens/{addr}"
-                            ds_res = requests.get(ds_url, timeout=5).json()
-                            pairs = ds_res.get("pairs", []) or []
-                            if pairs:
-                                pairs.sort(key=lambda x: float(x.get("liquidity", {}).get("usd", 0) or 0), reverse=True)
-                                price = pairs[0].get("priceUsd")
-                                if price is not None:
-                                    price_map[addr] = {"price": float(price)}
-                        except Exception:
-                            pass
-                                
+                except Exception as e:
+                    print(f"[ERROR] Price fetching exception: {e}", flush=True)
+                    
                     # --- CORE EXIT MONITORING LOOP (runs for ALL active positions) ---
                     for addr, pos in list(active_positions.items()):
                         current_price = None
@@ -180,12 +197,12 @@ def run_live_real_trader():
                             pos["no_price_cycles"] = pos.get("no_price_cycles", 0) + 1
                             print(f"  [WARN] Harga {pos['symbol']} tidak tersedia (Cycle ke-{pos['no_price_cycles']}). Mengaktifkan Emergency SL...", flush=True)
                             
-                            # EMERGENCY FORCE-CLOSE after 3 consecutive cycles with no price data (likely rug/delisted)
-                            if pos.get("no_price_cycles", 0) >= 3:
+                            # EMERGENCY FORCE-CLOSE after 24 consecutive cycles with no price data (approx 2 minutes, likely rug/delisted)
+                            if pos.get("no_price_cycles", 0) >= 24:
                                 entry_price = pos["entry_price"]
                                 exit_price = entry_price * 0.50  # Assume worst case -50% for rugpull
                                 
-                                print(f"\n🚨 [EMERGENCY EXIT] {pos['symbol']} tidak memiliki data harga 3 siklus. Kemungkinan RUGGED! Executing market sell...", flush=True)
+                                print(f"\n🚨 [EMERGENCY EXIT] {pos['symbol']} tidak memiliki data harga 24 siklus. Kemungkinan RUGGED! Executing market sell...", flush=True)
                                 
                                 raw_qty = int(pos["raw_qty"])
                                 
@@ -239,7 +256,56 @@ def run_live_real_trader():
                         # Dynamic Trade Mode Exit Logic
                         trade_mode = os.getenv("TRADE_MODE", "OPTIMIZED").upper()
                         
-                        if trade_mode == "MOONSHOT":
+                        if trade_mode == "ULTRA_SCALPER":
+                            if not pos.get("partial_tp_hit", False) and price_gain_pct >= 15.0:
+                                raw_qty = int(pos["raw_qty"])
+                                partial_raw_qty = int(raw_qty * 0.80)
+                                
+                                print(f"\n✨ [PARTIAL TP TRIGGERED] Jual 80% {pos['symbol']} @ ${current_price:.8f} (+{price_gain_pct:.2f}%)! Executing on-chain swap...", flush=True)
+                                
+                                sell_res = execute_solana_swap(
+                                    input_mint=addr,
+                                    output_mint="So11111111111111111111111111111111111111112",
+                                    amount_lamports=partial_raw_qty,
+                                    slippage_bps=slippage_bps,
+                                    jito_tip_lamports=jito_tip_lamports
+                                )
+                                
+                                if sell_res.get("status") == "success":
+                                    sol_received = float(sell_res["net_out_amount"]) / 1_000_000_000.0
+                                    print(f"✨ [REAL PARTIAL TP CONFIRMED] Successfully sold 80% of {pos['symbol']}!", flush=True)
+                                    print(f"   => SOL Received: {sol_received:.6f} SOL", flush=True)
+                                    print(f"   => Tx Signature: {sell_res['explorer_url']}", flush=True)
+                                    
+                                    orig_inv = pos.get("original_investment_sol", pos["net_investment_sol"])
+                                    partial_pnl = sol_received - (0.80 * orig_inv)
+                                    pos["total_pnl_sol"] = pos.get("total_pnl_sol", 0.0) + partial_pnl
+                                    
+                                    pos["raw_qty"] = str(raw_qty - partial_raw_qty)
+                                    pos["qty"] *= 0.20
+                                    pos["partial_tp_hit"] = True
+                                    pos["net_investment_sol"] *= 0.20
+                                    closed_any = True
+                                else:
+                                    print(f"[ERROR] Failed to execute partial TP sell transaction: {sell_res.get('message')}", flush=True)
+                                
+                            if pos.get("partial_tp_hit", False):
+                                if price_gain_pct >= 800.0:
+                                    sl_price = highest_price * 0.75
+                                    trail_level = "ULTRA TSL 25%"
+                                elif price_gain_pct >= 300.0:
+                                    sl_price = highest_price * 0.70
+                                    trail_level = "ULTRA TSL 30%"
+                                elif price_gain_pct >= 100.0:
+                                    sl_price = highest_price * 0.65
+                                    trail_level = "ULTRA TSL 35%"
+                                else:
+                                    sl_price = entry_price * 1.02
+                                    trail_level = "ULTRA BE-LOCK (+2%)"
+                            else:
+                                sl_price = entry_price * 0.80
+                                trail_level = "ULTRA INITIAL SL (20%)"
+                        elif trade_mode == "MOONSHOT":
                             # MOONSHOT EXIT LOGIC (Wider parameters, lets winners run)
                             if price_gain_pct >= 800.0:
                                 sl_price = highest_price * 0.75  # Trail 25% from peak
@@ -306,10 +372,16 @@ def run_live_real_trader():
                             
                             if sell_res.get("status") == "success":
                                 sol_received = float(sell_res["net_out_amount"]) / 1_000_000_000.0
-                                pnl_sol = sol_received - pos["net_investment_sol"]
+                                
+                                orig_inv = pos.get("original_investment_sol", pos["net_investment_sol"] / 0.20 if pos.get("partial_tp_hit") else pos["net_investment_sol"])
+                                
+                                if pos.get("partial_tp_hit", False):
+                                    pnl_sol = pos.get("total_pnl_sol", 0.0) + (sol_received - (0.20 * orig_inv))
+                                else:
+                                    pnl_sol = sol_received - orig_inv
                                 
                                 print(f"✨ [REAL SELL CONFIRMED] Successfully sold {pos['symbol']}!", flush=True)
-                                print(f"   => SOL Received: {sol_received:.6f} SOL | PnL: {pnl_sol:+.6f} SOL", flush=True)
+                                print(f"   => SOL Received: {sol_received:.6f} SOL | Cumulative PnL: {pnl_sol:+.6f} SOL", flush=True)
                                 print(f"   => Tx Signature: {sell_res['explorer_url']}", flush=True)
                                 
                                 # Persist 4-hour Cooldown Shield to prevent re-entries
@@ -323,7 +395,8 @@ def run_live_real_trader():
                                     "exit_price": current_price if price_gain_pct >= 10.0 else sl_price,
                                     "pnl_sol": pnl_sol,
                                     "tx_signature": sell_res["signature"],
-                                    "closed_at": time.strftime('%Y-%m-%d %H:%M:%S')
+                                    "closed_at": time.strftime('%Y-%m-%d %H:%M:%S'),
+                                    "exit_reason": trail_level
                                 })
                                 del active_positions[addr]
                                 closed_any = True
@@ -405,6 +478,8 @@ def run_live_real_trader():
                                     "entry_price": best_candidate["price"],
                                     "highest_price": best_candidate["price"],
                                     "net_investment_sol": sol_allocation,
+                                    "original_investment_sol": sol_allocation,
+                                    "total_pnl_sol": 0.0,
                                     "raw_qty": raw_qty_received, # On-chain integer quantity
                                     "qty": float(raw_qty_received) / 1_000_000_000.0, # Visual representation
                                     "entry_time": time.strftime('%Y-%m-%d %H:%M:%S')

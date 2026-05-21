@@ -249,12 +249,15 @@ def calculate_gem_score(pair_data: dict, security: dict) -> int:
 
     # V16.0 ZERO-MINUTE SNIPE BONUS
     if pair_data.get("zero_minute_snipe"):
-        score += 80  # Guarantee high score for zero-minute snipes that pass security
+        score += 40  # Balanced boost for snipes that pass strict pre-filters
 
     # NEW SIGNAL 1: Token Age Window (Optimal Entry Timing)
     # Too young = developer can still rug. Too old = pump already over.
     age_sec = pair_data.get("age_estimate_sec", 3600)
-    if 300 <= age_sec <= 10800:   # Sweet spot: 5 min - 3 hours (early entry allowed since security is mandatory)
+    if pair_data.get("zero_minute_snipe"):
+        # Zero-minute snipes bypass the young age penalty because they undergo strict social & volume checks
+        pass
+    elif 300 <= age_sec <= 10800:   # Sweet spot: 5 min - 3 hours (early entry allowed since security is mandatory)
         score += 20
     elif age_sec < 300:           # < 5 minutes: dangerously early
         score -= 40
@@ -437,17 +440,26 @@ def _fetch_candidates() -> list:
                 liq = float(be_data.get("liquidity", 0) or 0)
                 mcap = float(be_data.get("marketCap", 0) or 0)
                 
-                # V16.5 BIRDEYE FILTERS (Pump.fun aware)
-                # 1. Liquidity must be >= $1000 (Pump.fun starts low, around $1k-$2k before bonding curve finishes)
-                if liq >= 1000:
-                    
-                    # Sniper Detection (Buy/Sell Ratio using 5m window from Birdeye to match volume metrics)
-                    # We use 1m or 5m. Let's use 5m for better stability
+                # V16.7 BIRDEYE ULTRA-STRICT QUALITY FILTERS FOR PUMP.FUN
+                # 1. Require higher minimum liquidity to ensure a solid orderbook base
+                if liq >= 5000:
+                    # 2. Require Social Presence (serious projects fill out socials, scams don't)
+                    extensions = be_data.get("extensions", {}) or {}
+                    has_social = bool(extensions.get("twitter") or extensions.get("telegram") or extensions.get("website"))
+                    if not has_social:
+                        continue
+                        
+                    # 3. Require High Organic Activity (Filter out single-wallet bundlers and dead pools)
+                    unique_wallets_5m = int(be_data.get("uniqueWallet5m", 0) or 0)
+                    v5m = float(be_data.get("v5mUSD", 0) or 0)
+                    trade5m = int(be_data.get("trade5m", 0) or 0)
+                    if unique_wallets_5m < 15 or v5m < 1500 or trade5m < 25:
+                        continue
+
+                    # 4. Require strong buying pressure (Smart Money entering)
                     buys = int(be_data.get("buy5m", 0) or 0)
                     sells = int(be_data.get("sell5m", 0) or 0)
-                    
-                    # Require strong initial buying pressure (Smart Money entering)
-                    if buys > (sells * 2) or (buys > 10 and sells == 0):
+                    if buys >= 15 and (buys > (sells * 2) or (buys > 15 and sells == 0)):
                         
                         candidates[mint] = {
                             "chain": "solana",
@@ -456,7 +468,7 @@ def _fetch_candidates() -> list:
                             "name": be_data.get("name", "UNKNOWN"),
                             "address": mint,
                             "price": float(be_data.get("price", 0) or 0),
-                            "volume_5m": float(be_data.get("v5mUSD", 0) or 0),
+                            "volume_5m": v5m,
                             "volume_1h": float(be_data.get("v1hUSD", 0) or 0),
                             "volume_24h": float(be_data.get("v24hUSD", 0) or 0),
                             "liquidity": liq,

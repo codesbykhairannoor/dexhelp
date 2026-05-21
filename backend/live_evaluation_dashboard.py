@@ -3,6 +3,7 @@ import sys
 import json
 import time
 import requests
+from dotenv import load_dotenv
 
 # Fix Windows terminal encoding for Emojis
 if hasattr(sys.stdout, 'reconfigure'):
@@ -10,6 +11,88 @@ if hasattr(sys.stdout, 'reconfigure'):
         sys.stdout.reconfigure(encoding='utf-8')
     except Exception:
         pass
+
+# Load environmental variables from standard locations
+load_dotenv()
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+parent_dir = os.path.dirname(CURRENT_DIR)
+load_dotenv(os.path.join(parent_dir, ".env"))
+load_dotenv(os.path.join(CURRENT_DIR, ".env"))
+
+def calculate_active_sl(pos, current_price, trade_mode):
+    entry_price = pos.get("entry_price")
+    highest_price = max(pos.get("highest_price", entry_price), current_price)
+    price_gain_pct = ((highest_price - entry_price) / entry_price) * 100
+    
+    partial_tp_hit = pos.get("partial_tp_hit", False)
+    
+    sl_price = entry_price * 0.80  # Default fallback
+    trail_level = "INITIAL SL (20%)"
+    
+    if trade_mode == "ULTRA_SCALPER":
+        if partial_tp_hit:
+            if price_gain_pct >= 800.0:
+                sl_price = highest_price * 0.75
+                trail_level = "ULTRA TSL 25%"
+            elif price_gain_pct >= 300.0:
+                sl_price = highest_price * 0.70
+                trail_level = "ULTRA TSL 30%"
+            elif price_gain_pct >= 100.0:
+                sl_price = highest_price * 0.65
+                trail_level = "ULTRA TSL 35%"
+            else:
+                sl_price = entry_price * 1.02
+                trail_level = "ULTRA BE-LOCK (+2%)"
+        else:
+            sl_price = entry_price * 0.80
+            trail_level = "ULTRA INITIAL SL (20%)"
+    elif trade_mode == "MOONSHOT":
+        if price_gain_pct >= 800.0:
+            sl_price = highest_price * 0.75
+            trail_level = "STAGE 3 (25% TSL)"
+        elif price_gain_pct >= 300.0:
+            sl_price = highest_price * 0.70
+            trail_level = "STAGE 2 (30% TSL)"
+        elif price_gain_pct >= 100.0:
+            sl_price = highest_price * 0.65
+            trail_level = "STAGE 1 (35% TSL)"
+        else:
+            sl_price = highest_price * 0.70
+            trail_level = "MOONSHOT INITIAL SL (30%)"
+    elif trade_mode == "SCALPER":
+        if price_gain_pct >= 400.0:
+            sl_price = highest_price * 0.70
+            trail_level = "STAGE 4 (30% TSL)"
+        elif price_gain_pct >= 150.0:
+            sl_price = highest_price * 0.75
+            trail_level = "STAGE 3 (25% TSL)"
+        elif price_gain_pct >= 60.0:
+            sl_price = highest_price * 0.80
+            trail_level = "STAGE 2 (20% TSL)"
+        elif price_gain_pct >= 30.0:
+            sl_price = entry_price * 1.15
+            trail_level = "STAGE 1 (+15% LOCK)"
+        elif price_gain_pct >= 15.0:
+            sl_price = entry_price * 1.02
+            trail_level = "BE-LOCK (+2%)"
+        else:
+            sl_price = highest_price * 0.80
+            trail_level = "TRAILING SL (20%)"
+    else:  # OPTIMIZED
+        if price_gain_pct >= 150.0:
+            sl_price = highest_price * 0.75
+            trail_level = "STAGE 3 (25% TSL)"
+        elif price_gain_pct >= 60.0:
+            sl_price = highest_price * 0.80
+            trail_level = "STAGE 2 (20% TSL)"
+        elif price_gain_pct >= 20.0:
+            sl_price = entry_price * 1.02
+            trail_level = "BE-LOCK (+2%)"
+        else:
+            sl_price = highest_price * 0.90
+            trail_level = "OPTIMIZED INITIAL SL (10%)"
+            
+    return sl_price, trail_level
 
 def run_evaluation_dashboard():
     CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -96,6 +179,7 @@ def run_evaluation_dashboard():
     # --- CALCULATIONS ---
     total_active_value = 0.0
     active_positions_list = []
+    trade_mode = os.getenv("TRADE_MODE", "OPTIMIZED").upper()
     
     for addr, pos in active_positions.items():
         entry_price = pos["entry_price"]
@@ -106,15 +190,31 @@ def run_evaluation_dashboard():
         pnl_usd = current_val - pos.get("gross_investment", net_investment)
         pnl_pct = ((current_price - entry_price) / entry_price) * 100
         
+        # Calculate active SL and trailing level guard
+        sl_price, guard_status = calculate_active_sl(pos, current_price, trade_mode)
+        
+        if current_price > 0:
+            sl_dist_pct = ((current_price - sl_price) / current_price) * 100
+        else:
+            sl_dist_pct = 0.0
+            
+        partial_tp = "SECURED (20% Left)" if pos.get("partial_tp_hit", False) else "PENDING"
+        highest_price = max(pos.get("highest_price", entry_price), current_price)
+        
         total_active_value += current_val
         active_positions_list.append({
             "symbol": pos["symbol"],
             "entry_price": entry_price,
             "current_price": current_price,
+            "highest_price": highest_price,
             "invested": pos.get("gross_investment", net_investment),
             "current_val": current_val,
             "pnl_usd": pnl_usd,
-            "pnl_pct": pnl_pct
+            "pnl_pct": pnl_pct,
+            "sl_price": sl_price,
+            "sl_dist_pct": sl_dist_pct,
+            "partial_tp": partial_tp,
+            "guard_status": guard_status
         })
         
     total_portfolio_value = wallet_balance + total_active_value
@@ -159,22 +259,22 @@ def run_evaluation_dashboard():
     print("-" * 110)
     
     # Section 2: Active Positions Table
-    print(f"[2] POSISI AKTIF YANG SEDANG DIPANTAU ({len(active_positions_list)}/10):")
+    print(f"[2] POSISI AKTIF YANG SEDANG DIPANTAU ({len(active_positions_list)}/10) [MODE: {trade_mode}]:")
     if active_positions_list:
-        print(f"    {'SYMBOL':<10} | {'INVESTED':<10} | {'ENTRY PRICE':<12} | {'LIVE PRICE':<12} | {'PnL %':<10} | {'PnL USD'}")
-        print("    " + "-" * 100)
+        print(f"    {'SYMBOL':<10} | {'INVESTED':<8} | {'ENTRY PRICE':<12} | {'LIVE PRICE':<12} | {'PnL %':<8} | {'PnL USD':<12} | {'PEAK PRICE':<12} | {'SL PRICE':<12} | {'SL DIST %':<9} | {'PARTIAL TP':<15} | {'GUARD STATUS'}")
+        print("    " + "-" * 155)
         for pos in active_positions_list:
-            print(f"    {pos['symbol']:<10} | ${pos['invested']:<9.2f} | ${pos['entry_price']:<11.8f} | ${pos['current_price']:<11.8f} | {pos['pnl_pct']:+.2f}% | {pos['pnl_usd']:+.2f} USD")
+            print(f"    {pos['symbol']:<10} | ${pos['invested']:<7.2f} | ${pos['entry_price']:<11.8f} | ${pos['current_price']:<11.8f} | {pos['pnl_pct']:+7.2f}% | {pos['pnl_usd']:+8.2f} USD | ${pos['highest_price']:<11.8f} | ${pos['sl_price']:<11.8f} | {pos['sl_dist_pct']:+8.2f}% | {pos['partial_tp']:<15} | {pos['guard_status']}")
     else:
         print("    (Tidak ada posisi aktif saat ini)")
-    print("-" * 110)
+    print("-" * 155)
     
     # Section 3: Closed Trades History Table + Post-Exit Audit
     limit_text = "Semua Transaksi" if show_all else "10 Transaksi Terakhir"
     print(f"[3] RIWAYAT CLOSED TRADES & POST-EXIT AUDIT ({limit_text}):")
     if trade_history:
-        print(f"    {'SYMBOL':<10} | {'ENTRY':<11} | {'EXIT':<11} | {'PnL %':<8} | {'LIVE NOW':<11} | {'POST-CHG %':<10} | {'AUDIT EVALUATION'}")
-        print("    " + "-" * 100)
+        print(f"    {'SYMBOL':<10} | {'ENTRY':<12} | {'EXIT':<12} | {'PnL %':<8} | {'EXIT REASON':<26} | {'LIVE NOW':<12} | {'POST-CHG %':<10} | {'AUDIT EVALUATION'}")
+        print("    " + "-" * 145)
         
         for t in closed_audit_list:
             addr = t.get("address")
@@ -186,6 +286,8 @@ def run_evaluation_dashboard():
             if pnl_pct is None:
                 pnl_pct = float(t.get("pnl_sol", 0.0)) * 100.0 # Estimate
                 
+            exit_reason = t.get("exit_reason") or t.get("reason") or "UNKNOWN"
+            
             post_exit_chg = 0.0
             audit_eval = "⏱️ NO DATA"
             
@@ -200,13 +302,13 @@ def run_evaluation_dashboard():
             elif exit_price > 0:
                 audit_eval = "💀 RUGGED/DELISTED (0.00)"
                 
-            print(f"    {t['symbol']:<10} | ${t['entry_price']:<10.8f} | ${exit_price:<10.8f} | {pnl_pct:+.2f}% | ${live_price:<10.8f} | {post_exit_chg:+.2f}% | {audit_eval}")
+            print(f"    {t['symbol']:<10} | ${t['entry_price']:<11.8f} | ${exit_price:<11.8f} | {pnl_pct:+7.2f}% | {exit_reason:<26} | ${live_price:<11.8f} | {post_exit_chg:+9.2f}% | {audit_eval}")
             
         if not show_all and len(trade_history) > 10:
             print(f"    ... dan {len(trade_history) - 10} transaksi lama lainnya.")
     else:
         print("    (Belum ada transaksi selesai)")
-    print("-" * 110)
+    print("-" * 145)
     
     # Section 4: Quant Win/Loss Analytics
     print("[4] ANALISIS STATISTIK PRESTASI TRADING:")

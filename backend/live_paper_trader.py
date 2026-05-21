@@ -160,48 +160,63 @@ def run_live_paper_trader():
                     }
                     
                     price_map = {}
-                    r = requests.get(url, headers=headers, timeout=5)
-                    if r.status_code == 200:
-                        res = r.json()
-                        data = res.get("data", {}) if "data" in res else res
-                        for addr in addr_list:
-                            tinfo = data.get(addr, {})
-                            price = tinfo.get("usdPrice") or tinfo.get("price")
-                            if price is not None:
-                                price_map[addr] = {"price": float(price)}
+                    try:
+                        r = requests.get(url, headers=headers, timeout=5)
+                        if r.status_code == 200:
+                            res = r.json()
+                            data = res.get("data", {}) if "data" in res else res
+                            for addr in addr_list:
+                                tinfo = data.get(addr, {})
+                                price = tinfo.get("usdPrice") or tinfo.get("price")
+                                if price is not None:
+                                    price_map[addr] = {"price": float(price)}
+                    except Exception:
+                        pass
                                 
-                    # Fallback 1: query Birdeye API for any token missing price info
+                    # Fallback 1: Query DexScreener bulk pricing API (Free, high rate limit)
+                    missing_addrs = [addr for addr in addr_list if addr not in price_map]
+                    if missing_addrs:
+                        try:
+                            ds_addrs_str = ",".join(missing_addrs)
+                            ds_url = f"https://api.dexscreener.com/latest/dex/tokens/{ds_addrs_str}"
+                            ds_res = requests.get(ds_url, timeout=5).json()
+                            pairs = ds_res.get("pairs", []) or []
+                            for pair in pairs:
+                                base_addr = pair.get("baseToken", {}).get("address")
+                                price = pair.get("priceUsd")
+                                if base_addr and price is not None:
+                                    liq = float(pair.get("liquidity", {}).get("usd", 0) or 0)
+                                    if base_addr not in price_map or liq > price_map[base_addr].get("liq", 0):
+                                        price_map[base_addr] = {"price": float(price), "liq": liq}
+                        except Exception:
+                            pass
+ 
+                    # Fallback 2: Paced Birdeye Single-API Query (Limit to 1 query per cycle, min 15s cooldown per token)
+                    if not hasattr(run_live_paper_trader, "last_be_query"):
+                        run_live_paper_trader.last_be_query = {}
+                        
                     missing_addrs = [addr for addr in addr_list if addr not in price_map]
                     if missing_addrs:
                         birdeye_key = os.getenv("BIRDEYE_API_KEY", "")
                         if birdeye_key:
-                            for addr in missing_addrs:
+                            now = time.time()
+                            # Sort missing addresses by how long ago they were queried to pace properly
+                            missing_addrs.sort(key=lambda x: run_live_paper_trader.last_be_query.get(x, 0))
+                            oldest_addr = missing_addrs[0]
+                            last_time = run_live_paper_trader.last_be_query.get(oldest_addr, 0)
+                            
+                            if now - last_time >= 15.0:
                                 try:
-                                    be_url = f"https://public-api.birdeye.so/defi/price?address={addr}"
+                                    be_url = f"https://public-api.birdeye.so/defi/price?address={oldest_addr}"
                                     be_headers = {"X-API-KEY": birdeye_key, "Accept": "application/json"}
                                     be_res = requests.get(be_url, headers=be_headers, timeout=5).json()
+                                    run_live_paper_trader.last_be_query[oldest_addr] = now
                                     if be_res.get("success"):
                                         price = be_res.get("data", {}).get("value")
                                         if price is not None:
-                                            price_map[addr] = {"price": float(price)}
-                                            # print(f"  [FEED] Fallback sukses via Birdeye untuk {addr}")
+                                            price_map[oldest_addr] = {"price": float(price)}
                                 except Exception:
                                     pass
-
-                    # Fallback 2: query DexScreener API for any token still missing price info
-                    missing_addrs = [addr for addr in addr_list if addr not in price_map]
-                    for addr in missing_addrs:
-                        try:
-                            ds_url = f"https://api.dexscreener.com/latest/dex/tokens/{addr}"
-                            ds_res = requests.get(ds_url, timeout=5).json()
-                            pairs = ds_res.get("pairs", []) or []
-                            if pairs:
-                                pairs.sort(key=lambda x: float(x.get("liquidity", {}).get("usd", 0) or 0), reverse=True)
-                                price = pairs[0].get("priceUsd")
-                                if price is not None:
-                                    price_map[addr] = {"price": float(price)}
-                        except Exception:
-                            pass
                     
                     # --- CORE EXIT MONITORING LOOP (runs for ALL active positions) ---
                     for addr, pos in list(active_positions.items()):
@@ -214,15 +229,15 @@ def run_live_paper_trader():
                             pos["no_price_cycles"] = pos.get("no_price_cycles", 0) + 1
                             print(f"  [WARN] Harga {pos['symbol']} tidak tersedia (Cycle ke-{pos['no_price_cycles']}). Mengaktifkan Emergency SL...")
                             
-                            # EMERGENCY FORCE-CLOSE after 3 consecutive cycles with no price data (likely rug/delisted)
-                            if pos.get("no_price_cycles", 0) >= 3:
+                            # EMERGENCY FORCE-CLOSE after 24 consecutive cycles with no price data (approx 2 minutes, likely rug/delisted)
+                            if pos.get("no_price_cycles", 0) >= 24:
                                 entry_price = pos["entry_price"]
                                 exit_price = entry_price * 0.50  # Assume worst case -50% for rugpull
                                 gross_inv = pos.get("gross_investment", pos["net_investment"])
                                 pnl_usd = (pos["qty"] * exit_price) - gross_inv
                                 realized_pnl_pct = (pnl_usd / gross_inv) * 100
                                 
-                                print(f"  [EMERGENCY EXIT] {pos['symbol']} tidak memiliki data harga 3 siklus berturut-turut. Kemungkinan RUGGED!")
+                                print(f"  [EMERGENCY EXIT] {pos['symbol']} tidak memiliki data harga 24 siklus berturut-turut. Kemungkinan RUGGED!")
                                 print(f"     => Harga Jual Estimasi: ${exit_price:.8f} | Realized PnL: {realized_pnl_pct:+.2f}% (${pnl_usd:+.2f})")
                                 
                                 portfolio.setdefault("cooldowns", {})[addr] = time.time() + 86400  # 24 hour cooldown for rugged tokens
@@ -255,7 +270,42 @@ def run_live_paper_trader():
                         # Dynamic Trade Mode Exit Logic
                         trade_mode = os.getenv("TRADE_MODE", "OPTIMIZED").upper()
                         
-                        if trade_mode == "MOONSHOT":
+                        if trade_mode == "ULTRA_SCALPER":
+                            if not pos.get("partial_tp_hit", False) and price_gain_pct >= 15.0:
+                                partial_qty = pos["qty"] * 0.80
+                                partial_val = partial_qty * current_price
+                                portfolio["wallet_balance"] += partial_val
+                                print(f"\n✨ [PARTIAL TP] Jual 80% {pos['symbol']} @ ${current_price:.8f} (+{price_gain_pct:.2f}%)!", flush=True)
+                                
+                                # Track partial PnL
+                                orig_gross = pos.get("original_gross_investment", pos.get("gross_investment", pos["net_investment"]))
+                                partial_pnl = partial_val - (0.80 * orig_gross)
+                                pos["total_pnl_usd"] = pos.get("total_pnl_usd", 0.0) + partial_pnl
+                                
+                                pos["qty"] *= 0.20
+                                pos["partial_tp_hit"] = True
+                                if "gross_investment" in pos:
+                                    pos["gross_investment"] *= 0.20
+                                pos["net_investment"] *= 0.20
+                                closed_any = True
+                                
+                            if pos.get("partial_tp_hit", False):
+                                if price_gain_pct >= 800.0:
+                                    sl_price = highest_price * 0.75
+                                    trail_level = "ULTRA TSL 25%"
+                                elif price_gain_pct >= 300.0:
+                                    sl_price = highest_price * 0.70
+                                    trail_level = "ULTRA TSL 30%"
+                                elif price_gain_pct >= 100.0:
+                                    sl_price = highest_price * 0.65
+                                    trail_level = "ULTRA TSL 35%"
+                                else:
+                                    sl_price = entry_price * 1.02
+                                    trail_level = "ULTRA BE-LOCK (+2%)"
+                            else:
+                                sl_price = entry_price * 0.80
+                                trail_level = "ULTRA INITIAL SL (20%)"
+                        elif trade_mode == "MOONSHOT":
                             # MOONSHOT EXIT LOGIC (Wider parameters, lets winners run)
                             if price_gain_pct >= 800.0:
                                 sl_price = highest_price * 0.75  # Trail 25% from peak
@@ -311,10 +361,15 @@ def run_live_paper_trader():
                             exit_price = current_price
                             net_exit_value = pos["qty"] * exit_price
                             
-                            # Use gross_investment if available, fallback to net_investment
-                            gross_inv = pos.get("gross_investment", pos["net_investment"])
-                            pnl_usd = net_exit_value - gross_inv
-                            realized_pnl_pct = (pnl_usd / gross_inv) * 100
+                            orig_gross = pos.get("original_gross_investment", pos.get("gross_investment", pos["net_investment"]) / 0.20 if pos.get("partial_tp_hit") else pos.get("gross_investment", pos["net_investment"]))
+                            
+                            if pos.get("partial_tp_hit", False):
+                                total_pnl_usd = pos.get("total_pnl_usd", 0.0) + (net_exit_value - (0.20 * orig_gross))
+                                realized_pnl_pct = (total_pnl_usd / orig_gross) * 100
+                                pnl_usd = total_pnl_usd
+                            else:
+                                pnl_usd = net_exit_value - orig_gross
+                                realized_pnl_pct = (pnl_usd / orig_gross) * 100
                             
                             print(f"  [EXIT TRIGGERED] {trail_level} Terpicu untuk {pos['symbol']}!")
                             print(f"     => Harga Jual: ${exit_price:.8f} | Realized PnL: {realized_pnl_pct:+.2f}% (${pnl_usd:+.2f})")
@@ -330,7 +385,8 @@ def run_live_paper_trader():
                                 "exit_price": exit_price,
                                 "pnl_pct": realized_pnl_pct,
                                 "pnl_usd": pnl_usd,
-                                "closed_at": time.strftime('%Y-%m-%d %H:%M:%S')
+                                "closed_at": time.strftime('%Y-%m-%d %H:%M:%S'),
+                                "exit_reason": trail_level
                             })
                             del active_positions[addr]
                             closed_any = True
@@ -384,6 +440,8 @@ def run_live_paper_trader():
                                     "highest_price": gem["price"],
                                     "gross_investment": trade_allocation,
                                     "net_investment": net_investment,
+                                    "original_gross_investment": trade_allocation,
+                                    "total_pnl_usd": 0.0,
                                     "qty": qty,
                                     "entry_time": time.strftime('%Y-%m-%d %H:%M:%S')
                                 }
