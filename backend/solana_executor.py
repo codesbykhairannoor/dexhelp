@@ -194,6 +194,7 @@ def execute_solana_swap(
     helius_url = os.getenv("SOLANA_RPC_HELIUS")
     drpc_url = os.getenv("SOLANA_RPC_DRPC")
     helius_key = os.getenv("HELIUS_API_KEY")
+    flux_shield_url = os.getenv("FLUXRPC_SHIELD_URL")
     
     if not priv_key_b58:
         return {"status": "error", "message": "Private key missing in .env"}
@@ -365,6 +366,17 @@ def execute_solana_swap(
                 broadcast_errors.append(f"dRPC RPC error: {res.get('error')}")
         except Exception as e:
             broadcast_errors.append(f"dRPC broadcast failed: {str(e)}")
+            
+    # Broadcast to FluxRPC Shield (MEV-protected)
+    if flux_shield_url:
+        try:
+            res = requests.post(flux_shield_url, json=rpc_payload, timeout=5).json()
+            if "result" in res:
+                signatures.append(res["result"])
+            else:
+                broadcast_errors.append(f"FluxRPC Shield error: {res.get('error')}")
+        except Exception as e:
+            broadcast_errors.append(f"FluxRPC Shield broadcast failed: {str(e)}")
             
     # Broadcast to Jupiter Swap V1 Execute API (Managed Landing Engine)
     if jup_api_key:

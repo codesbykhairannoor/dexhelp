@@ -97,8 +97,8 @@ def run_live_real_trader():
     slippage_bps = int(os.getenv("SOLANA_SLIPPAGE_BPS", "250")) # 2.5% default slippage
     jito_tip_lamports = int(os.getenv("SOLANA_JITO_TIP", "1000000")) # 0.001 SOL Jito tip
     
-    # 3. High-Frequency Monitoring Loop (Every 10 seconds for real trades)
-    loop_delay = 10
+    # 3. High-Frequency Monitoring Loop (Every 5 seconds for real trades)
+    loop_delay = 5
     
     while True:
         try:
@@ -136,6 +136,8 @@ def run_live_real_trader():
                                 price = tinfo.get("usdPrice") or tinfo.get("price")
                                 if price is not None:
                                     price_map[addr] = {"price": float(price)}
+                        else:
+                            print(f"  [WARN] Jupiter Price API returned error code: {r.status_code}", flush=True)
                     except Exception:
                         pass
                                     
@@ -183,8 +185,6 @@ def run_live_real_trader():
                                             price_map[oldest_addr] = {"price": float(price)}
                                 except Exception:
                                     pass
-                except Exception as e:
-                    print(f"[ERROR] Price fetching exception: {e}", flush=True)
                     
                     # --- CORE EXIT MONITORING LOOP (runs for ALL active positions) ---
                     for addr, pos in list(active_positions.items()):
@@ -402,8 +402,6 @@ def run_live_real_trader():
                                 closed_any = True
                             else:
                                 print(f"[CRITICAL ERROR] Failed to execute stop loss sell transaction: {sell_res.get('message')}", flush=True)
-                    else:
-                        print(f"  [WARN] Jupiter Price API returned error code: {r.status_code}", flush=True)
                 except Exception as e:
                     print(f"  [WARN] Error during bulk price update: {e}", flush=True)
             else:

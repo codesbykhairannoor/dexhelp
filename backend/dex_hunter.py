@@ -410,8 +410,8 @@ def _fetch_candidates() -> list:
     # 2. Iterate and check against Birdeye for Volume & Liquidity
     birdeye_key = os.getenv("BIRDEYE_API_KEY", "")
     
-    # Limit to top 5 newest to avoid 60 RPM rate limit (5 requests per 5s cycle = 60 requests per 60s)
-    for t in new_tokens[:5]:  
+    # Scan tokens at index 15 to 20 (roughly 2-3 mins old) so they have time to build $10k+ liquidity and volume
+    for t in new_tokens[15:20]:  
         mint = t.get('mint')
         if not mint:
             continue
@@ -442,7 +442,7 @@ def _fetch_candidates() -> list:
                 
                 # V16.7 BIRDEYE ULTRA-STRICT QUALITY FILTERS FOR PUMP.FUN
                 # 1. Require higher minimum liquidity to ensure a solid orderbook base
-                if liq >= 5000:
+                if liq >= 10000:
                     # 2. Require Social Presence (serious projects fill out socials, scams don't)
                     extensions = be_data.get("extensions", {}) or {}
                     has_social = bool(extensions.get("twitter") or extensions.get("telegram") or extensions.get("website"))
@@ -453,7 +453,7 @@ def _fetch_candidates() -> list:
                     unique_wallets_5m = int(be_data.get("uniqueWallet5m", 0) or 0)
                     v5m = float(be_data.get("v5mUSD", 0) or 0)
                     trade5m = int(be_data.get("trade5m", 0) or 0)
-                    if unique_wallets_5m < 15 or v5m < 1500 or trade5m < 25:
+                    if unique_wallets_5m < 20 or v5m < 2500 or trade5m < 40:
                         continue
 
                     # 4. Require strong buying pressure (Smart Money entering)
