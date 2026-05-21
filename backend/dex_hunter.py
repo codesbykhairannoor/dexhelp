@@ -441,19 +441,24 @@ def _fetch_candidates() -> list:
                 mcap = float(be_data.get("marketCap", 0) or 0)
                 
                 # V16.7 BIRDEYE ULTRA-STRICT QUALITY FILTERS FOR PUMP.FUN
+                unique_wallets_5m = int(be_data.get("uniqueWallet5m", 0) or 0)
+                v5m = float(be_data.get("v5mUSD", 0) or 0)
+                trade5m = int(be_data.get("trade5m", 0) or 0)
+                
+                print(f"  [AUDIT] {be_data.get('symbol', 'UNKNOWN')} | Liq: ${liq:.0f} | Vol5m: ${v5m:.0f} | Trades: {trade5m} | Wallets: {unique_wallets_5m}")
+                
                 # 1. Require higher minimum liquidity to ensure a solid orderbook base
                 if liq >= 10000:
                     # 2. Require Social Presence (serious projects fill out socials, scams don't)
                     extensions = be_data.get("extensions", {}) or {}
                     has_social = bool(extensions.get("twitter") or extensions.get("telegram") or extensions.get("website"))
                     if not has_social:
+                        print(f"    -> [DITOLAK] Tidak ada link sosial (Twitter/Telegram). Kemungkinan scam.")
                         continue
                         
                     # 3. Require High Organic Activity (Filter out single-wallet bundlers and dead pools)
-                    unique_wallets_5m = int(be_data.get("uniqueWallet5m", 0) or 0)
-                    v5m = float(be_data.get("v5mUSD", 0) or 0)
-                    trade5m = int(be_data.get("trade5m", 0) or 0)
                     if unique_wallets_5m < 20 or v5m < 2500 or trade5m < 40:
+                        print(f"    -> [DITOLAK] Aktivitas tidak organik (Syarat: 20 Wallets, $2.5k Vol, 40 Trades).")
                         continue
 
                     # 4. Require strong buying pressure (Smart Money entering)
