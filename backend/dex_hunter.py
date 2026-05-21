@@ -431,7 +431,7 @@ def _fetch_candidates() -> list:
         ds_r = requests.get(ds_url, timeout=5)
         
         if ds_r.status_code == 200:
-            pairs = ds_r.json().get('pairs', [])
+            pairs = ds_r.json().get('pairs') or []
             
             # Since a token can have multiple pairs, group by baseToken address and find the best pool (highest liquidity)
             best_pairs = {}
@@ -457,22 +457,20 @@ def _fetch_candidates() -> list:
                 
                 print(f"  [AUDIT] {symbol} | Liq: ${liq:.0f} | Vol5m: ${v5m:.0f} | Trades: {trade5m} | Buys/Sells: {buys}/{sells}")
                 
-                # V17.0 DEXSCREENER ULTRA-STRICT QUALITY FILTERS
-                if liq >= 10000:
-                    # Require Social Presence
+                # V20.0 DEXSCREENER MODERATE FILTERS (Balanced Frequency & Quality)
+                if liq >= 5000:
+                    # Require Social Presence (Optional for Moderate)
                     info = pair.get("info", {})
                     has_social = bool(info.get("websites") or info.get("socials"))
-                    if not has_social:
-                        print(f"    -> [DITOLAK] Tidak ada link sosial (Website/Twitter/Telegram). Kemungkinan scam.")
-                        continue
+                    # We no longer reject instantly if no social, rely on scoring instead
                         
                     # Organic Activity Proxy
-                    if trade5m < 40 or v5m < 2500:
-                        print(f"    -> [DITOLAK] Aktivitas tidak organik (Syarat: $2.5k Vol, 40 Trades).")
+                    if trade5m < 20 or v5m < 1000:
+                        print(f"    -> [DITOLAK] Aktivitas terlalu rendah (Syarat: $1k Vol, 20 Trades).")
                         continue
                         
                     # Strong buying pressure
-                    if buys >= 15 and (buys > (sells * 2) or (buys > 15 and sells == 0)):
+                    if buys >= 10 and buys > sells:
                         candidates[mint] = {
                             "chain": "solana",
                             "pair_address": pair.get('pairAddress'),
