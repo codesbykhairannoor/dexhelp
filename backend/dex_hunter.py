@@ -491,6 +491,12 @@ def _fetch_candidates() -> list:
                             "age_estimate_sec": 60, # Dummy age to pass downstream filters
                             "zero_minute_snipe": True # Flag for live_paper_trader
                         }
+            else:
+                try:
+                    error_msg = be_r.json().get('message', 'Unknown Error')
+                except Exception:
+                    error_msg = be_r.text[:50]
+                print(f"  [WARN] API Birdeye Error ({be_r.status_code}): {error_msg}")
         except Exception as e:
             pass
             
