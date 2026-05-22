@@ -8,7 +8,8 @@ from solders.keypair import Keypair
 from solders.transaction import VersionedTransaction
 from dotenv import load_dotenv
 
-load_dotenv()
+env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+load_dotenv(dotenv_path=env_path)
 
 # --- THE ARSENAL ---
 SOLANA_PRIVATE_KEY = os.getenv("SOLANA_PRIVATE_KEY", "")

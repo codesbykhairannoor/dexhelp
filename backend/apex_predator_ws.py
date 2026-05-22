@@ -5,7 +5,8 @@ import os
 import httpx
 from dotenv import load_dotenv
 
-load_dotenv()
+env_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+load_dotenv(dotenv_path=env_path)
 
 HELIUS_API_KEY = os.getenv("HELIUS_API_KEY", "")
 PRIVATE_KEY = os.getenv("SOLANA_PRIVATE_KEY", "")
