@@ -463,20 +463,26 @@ def _fetch_candidates() -> list:
                     
                     print(f"  [AUDIT] {symbol} | Liq: ${liq:.0f} | Vol5m: ${v5m:.0f} | Trades: {trade5m} | Buys/Sells: {buys}/{sells}")
                     
-                    # V23.0 HOLY GRAIL OPTIMIZER FILTERS (MAX WR)
-                    # Low liquidity requirement to catch early, but extreme organic activity required.
-                    if liq >= 3000 or (liq == 0 and mcap >= 10000):
+                    # V24.0 DYNAMIC CONFIGURATOR FILTERS
+                    # All parameters are now dynamically loaded from .env
+                    min_liq = int(os.getenv("MIN_LIQ", "3000"))
+                    min_mcap = int(os.getenv("MIN_MCAP", "10000"))
+                    req_socials = os.getenv("REQUIRE_SOCIALS", "TRUE").upper() == "TRUE"
+                    min_vol = int(os.getenv("MIN_VOL_5M", "5000"))
+                    min_trades = int(os.getenv("MIN_TRADES_5M", "60"))
+                    
+                    if liq >= min_liq or (liq == 0 and mcap >= min_mcap):
                         
-                        # Require Social Presence to filter out 90% of lazy scams
+                        # Require Social Presence
                         info = pair.get("info", {})
                         has_social = bool(info.get("websites") or info.get("socials"))
-                        if not has_social:
+                        if req_socials and not has_social:
                             print(f"    -> [DITOLAK] Tidak ada link sosial (Website/Twitter/Telegram). Kemungkinan scam.")
                             continue
                             
-                        # Extreme Organic Activity Thresholds
-                        if trade5m < 60 or v5m < 5000:
-                            print(f"    -> [DITOLAK] Aktivitas terlalu rendah (Syarat: $5k Vol, 60 Trades).")
+                        # Dynamic Organic Activity Thresholds
+                        if trade5m < min_trades or v5m < min_vol:
+                            print(f"    -> [DITOLAK] Aktivitas terlalu rendah (Syarat: ${min_vol} Vol, {min_trades} Trades).")
                             continue
                             
                         # Strong buying pressure (Buy Ratio > 2.0)
@@ -507,7 +513,7 @@ def _fetch_candidates() -> list:
                         else:
                             print(f"    -> [DITOLAK] Rasio Pembeli Lemah (Syarat: Buys > Sells * 2 & Minimal 15 Buys).")
                     else:
-                        print(f"    -> [DITOLAK] Likuiditas/MarketCap Kecil (Liq < $3k atau Mcap < $10k).")
+                        print(f"    -> [DITOLAK] Likuiditas/MarketCap Kecil (Liq < ${min_liq} atau Mcap < ${min_mcap}).")
             else:
                 print(f"  [WARN] API DexScreener Error ({ds_r.status_code}): {ds_r.text[:50]}")
         except Exception as e:
