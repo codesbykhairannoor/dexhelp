@@ -408,9 +408,9 @@ def _fetch_candidates() -> list:
         return []
 
     # 2. Extract mints for bulk query to DexScreener
-    # We will query up to 30 tokens from RugCheck.
-    offset = min(15, max(0, len(new_tokens) - 30))
-    target_tokens = new_tokens[offset:offset+30]
+    # V21.0: We will query up to 60 tokens from RugCheck.
+    offset = min(15, max(0, len(new_tokens) - 60))
+    target_tokens = new_tokens[offset:offset+60]
     
     mints = []
     for t in target_tokens:
@@ -425,80 +425,90 @@ def _fetch_candidates() -> list:
         return []
         
     # 3. Bulk query DexScreener (100% FREE, NO LIMITS)
-    mints_str = ",".join(mints)
-    try:
-        ds_url = f"https://api.dexscreener.com/latest/dex/tokens/{mints_str}"
-        ds_r = requests.get(ds_url, timeout=5)
-        
-        if ds_r.status_code == 200:
-            pairs = ds_r.json().get('pairs') or []
+    # DexScreener allows max 30 addresses per request. Split into batches of 30.
+    batch_size = 30
+    batches = [mints[i:i + batch_size] for i in range(0, len(mints), batch_size)]
+    
+    for batch in batches:
+        mints_str = ",".join(batch)
+        try:
+            ds_url = f"https://api.dexscreener.com/latest/dex/tokens/{mints_str}"
+            ds_r = requests.get(ds_url, timeout=5)
             
-            # Since a token can have multiple pairs, group by baseToken address and find the best pool (highest liquidity)
-            best_pairs = {}
-            for pair in pairs:
-                if pair.get('chainId') != 'solana':
-                    continue
-                    
-                base_addr = pair.get('baseToken', {}).get('address')
-                if not base_addr or base_addr not in mints:
-                    continue
-                    
-                liq = float(pair.get('liquidity', {}).get('usd', 0) or 0)
-                if base_addr not in best_pairs or liq > float(best_pairs[base_addr].get('liquidity', {}).get('usd', 0) or 0):
-                    best_pairs[base_addr] = pair
-                    
-            for mint, pair in best_pairs.items():
-                liq = float(pair.get('liquidity', {}).get('usd', 0) or 0)
-                v5m = float(pair.get('volume', {}).get('m5', 0) or 0)
-                buys = int(pair.get('txns', {}).get('m5', {}).get('buys', 0) or 0)
-                sells = int(pair.get('txns', {}).get('m5', {}).get('sells', 0) or 0)
-                trade5m = buys + sells
-                symbol = pair.get('baseToken', {}).get('symbol', 'UNKNOWN')
+            if ds_r.status_code == 200:
+                pairs = ds_r.json().get('pairs') or []
                 
-                print(f"  [AUDIT] {symbol} | Liq: ${liq:.0f} | Vol5m: ${v5m:.0f} | Trades: {trade5m} | Buys/Sells: {buys}/{sells}")
-                
-                # V20.0 DEXSCREENER MODERATE FILTERS (Balanced Frequency & Quality)
-                if liq >= 5000:
-                    # Require Social Presence (Optional for Moderate)
-                    info = pair.get("info", {})
-                    has_social = bool(info.get("websites") or info.get("socials"))
-                    # We no longer reject instantly if no social, rely on scoring instead
-                        
-                    # Organic Activity Proxy
-                    if trade5m < 20 or v5m < 1000:
-                        print(f"    -> [DITOLAK] Aktivitas terlalu rendah (Syarat: $1k Vol, 20 Trades).")
+                # Since a token can have multiple pairs, group by baseToken address and find the best pool
+                best_pairs = {}
+                for pair in pairs:
+                    if pair.get('chainId') != 'solana':
                         continue
                         
-                    # Strong buying pressure
-                    if buys >= 10 and buys > sells:
-                        candidates[mint] = {
-                            "chain": "solana",
-                            "pair_address": pair.get('pairAddress'),
-                            "symbol": symbol,
-                            "name": pair.get('baseToken', {}).get('name', 'UNKNOWN'),
-                            "address": mint,
-                            "price": float(pair.get('priceUsd', 0) or 0),
-                            "volume_5m": v5m,
-                            "volume_1h": float(pair.get('volume', {}).get('h1', 0) or 0),
-                            "volume_24h": float(pair.get('volume', {}).get('h24', 0) or 0),
-                            "liquidity": liq,
-                            "market_cap": float(pair.get('marketCap', 0) or pair.get('fdv', 0) or 0),
-                            "fdv": float(pair.get('fdv', 0) or 0),
-                            "price_change_5m": float(pair.get('priceChange', {}).get('m5', 0) or 0),
-                            "price_change_1h": float(pair.get('priceChange', {}).get('h1', 0) or 0),
-                            "txns": {"m5": {"buys": buys, "sells": sells}},
-                            "info": {"imageUrl": info.get('imageUrl', "")},
-                            "url": pair.get('url', f"https://dexscreener.com/solana/{mint}"),
-                            "boost_amount": 0,
-                            "boosts_active": 0,
-                            "age_estimate_sec": 60,
-                            "zero_minute_snipe": True
-                        }
-        else:
-            print(f"  [WARN] API DexScreener Error ({ds_r.status_code}): {ds_r.text[:50]}")
-    except Exception as e:
-        print(f"  [WARN] Gagal menghubungi DexScreener: {e}")
-        
+                    base_addr = pair.get('baseToken', {}).get('address')
+                    if not base_addr or base_addr not in batch:
+                        continue
+                        
+                    liq = float(pair.get('liquidity', {}).get('usd', 0) or 0)
+                    if base_addr not in best_pairs or liq > float(best_pairs[base_addr].get('liquidity', {}).get('usd', 0) or 0):
+                        best_pairs[base_addr] = pair
+                        
+                for mint, pair in best_pairs.items():
+                    liq = float(pair.get('liquidity', {}).get('usd', 0) or 0)
+                    v5m = float(pair.get('volume', {}).get('m5', 0) or 0)
+                    buys = int(pair.get('txns', {}).get('m5', {}).get('buys', 0) or 0)
+                    sells = int(pair.get('txns', {}).get('m5', {}).get('sells', 0) or 0)
+                    trade5m = buys + sells
+                    symbol = pair.get('baseToken', {}).get('symbol', 'UNKNOWN')
+                    mcap = float(pair.get('marketCap', 0) or pair.get('fdv', 0) or 0)
+                    
+                    print(f"  [AUDIT] {symbol} | Liq: ${liq:.0f} | Vol5m: ${v5m:.0f} | Trades: {trade5m} | Buys/Sells: {buys}/{sells}")
+                    
+                    # V21.0 HIGH-FREQUENCY HUNTER FILTERS
+                    # Bug fix for DexScreener showing Liq $0 for Pump.fun or Meteora
+                    if liq >= 3000 or (liq == 0 and mcap >= 10000):
+                        
+                        info = pair.get("info", {})
+                        has_social = bool(info.get("websites") or info.get("socials"))
+                            
+                        # Lowered Organic Activity Thresholds
+                        if trade5m < 10 or v5m < 500:
+                            print(f"    -> [DITOLAK] Aktivitas terlalu rendah (Syarat: $500 Vol, 10 Trades).")
+                            continue
+                            
+                        # Strong buying pressure
+                        if buys >= 5 and buys > sells:
+                            candidates[mint] = {
+                                "chain": "solana",
+                                "pair_address": pair.get('pairAddress'),
+                                "symbol": symbol,
+                                "name": pair.get('baseToken', {}).get('name', 'UNKNOWN'),
+                                "address": mint,
+                                "price": float(pair.get('priceUsd', 0) or 0),
+                                "volume_5m": v5m,
+                                "volume_1h": float(pair.get('volume', {}).get('h1', 0) or 0),
+                                "volume_24h": float(pair.get('volume', {}).get('h24', 0) or 0),
+                                "liquidity": liq,
+                                "market_cap": mcap,
+                                "fdv": float(pair.get('fdv', 0) or 0),
+                                "price_change_5m": float(pair.get('priceChange', {}).get('m5', 0) or 0),
+                                "price_change_1h": float(pair.get('priceChange', {}).get('h1', 0) or 0),
+                                "txns": {"m5": {"buys": buys, "sells": sells}},
+                                "info": {"imageUrl": info.get('imageUrl', "")},
+                                "url": pair.get('url', f"https://dexscreener.com/solana/{mint}"),
+                                "boost_amount": 0,
+                                "boosts_active": 0,
+                                "age_estimate_sec": 60,
+                                "zero_minute_snipe": True
+                            }
+                        else:
+                            print(f"    -> [DITOLAK] Rasio Pembeli Lemah (Syarat: Buys > Sells & Minimal 5).")
+                    else:
+                        print(f"    -> [DITOLAK] Likuiditas/MarketCap Kecil (Liq < $3k atau Mcap < $10k).")
+            else:
+                print(f"  [WARN] API DexScreener Error ({ds_r.status_code}): {ds_r.text[:50]}")
+        except Exception as e:
+            print(f"  [WARN] Gagal menghubungi DexScreener: {e}")
+            
     return list(candidates.values())
 
 def _scan_pipeline():
