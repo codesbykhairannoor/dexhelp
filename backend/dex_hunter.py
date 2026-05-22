@@ -463,20 +463,24 @@ def _fetch_candidates() -> list:
                     
                     print(f"  [AUDIT] {symbol} | Liq: ${liq:.0f} | Vol5m: ${v5m:.0f} | Trades: {trade5m} | Buys/Sells: {buys}/{sells}")
                     
-                    # V21.0 HIGH-FREQUENCY HUNTER FILTERS
-                    # Bug fix for DexScreener showing Liq $0 for Pump.fun or Meteora
+                    # V23.0 HOLY GRAIL OPTIMIZER FILTERS (MAX WR)
+                    # Low liquidity requirement to catch early, but extreme organic activity required.
                     if liq >= 3000 or (liq == 0 and mcap >= 10000):
                         
+                        # Require Social Presence to filter out 90% of lazy scams
                         info = pair.get("info", {})
                         has_social = bool(info.get("websites") or info.get("socials"))
-                            
-                        # Lowered Organic Activity Thresholds
-                        if trade5m < 10 or v5m < 500:
-                            print(f"    -> [DITOLAK] Aktivitas terlalu rendah (Syarat: $500 Vol, 10 Trades).")
+                        if not has_social:
+                            print(f"    -> [DITOLAK] Tidak ada link sosial (Website/Twitter/Telegram). Kemungkinan scam.")
                             continue
                             
-                        # Strong buying pressure
-                        if buys >= 5 and buys > sells:
+                        # Extreme Organic Activity Thresholds
+                        if trade5m < 60 or v5m < 5000:
+                            print(f"    -> [DITOLAK] Aktivitas terlalu rendah (Syarat: $5k Vol, 60 Trades).")
+                            continue
+                            
+                        # Strong buying pressure (Buy Ratio > 2.0)
+                        if buys >= 15 and buys > (sells * 2.0):
                             candidates[mint] = {
                                 "chain": "solana",
                                 "pair_address": pair.get('pairAddress'),
@@ -501,7 +505,7 @@ def _fetch_candidates() -> list:
                                 "zero_minute_snipe": True
                             }
                         else:
-                            print(f"    -> [DITOLAK] Rasio Pembeli Lemah (Syarat: Buys > Sells & Minimal 5).")
+                            print(f"    -> [DITOLAK] Rasio Pembeli Lemah (Syarat: Buys > Sells * 2 & Minimal 15 Buys).")
                     else:
                         print(f"    -> [DITOLAK] Likuiditas/MarketCap Kecil (Liq < $3k atau Mcap < $10k).")
             else:
