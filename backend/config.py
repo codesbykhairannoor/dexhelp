@@ -14,16 +14,17 @@ TRADE_MODE = "HOLY_GRAIL_75WR"
 
 # --- STRATEGY SCORING THRESHOLD ---
 # Skor minimal yang dikeluarkan oleh engine predator_score
-# Semakin rendah, semakin rajin trade (tapi risiko tinggi). Normalnya 75-80.
-MIN_ENTRY_SCORE = 75
+# Semakin rendah, semakin rajin trade (tapi risiko tinggi).
+# BERSADARKAN HASIL SIMULASI (GRID SEARCH): Score 90 adalah yang paling stabil dan profitable.
+MIN_ENTRY_SCORE = 90
 
-# --- DYNAMIC HIGH-FREQUENCY FILTERS (V25) ---
+# --- DYNAMIC HIGH-FREQUENCY FILTERS (V26 OPTIMIZED) ---
 # Filter untuk mengambil koin baru di detik-detik awal peluncuran:
-MIN_LIQ = 500         # Likuiditas minimal USD ($500 agar bisa snipes 0-minute)
-MIN_MCAP = 2000       # Market Cap minimal USD
+MIN_LIQ = 3000        # Likuiditas minimal USD ($3000 untuk menghindari instan rugpull)
+MIN_MCAP = 10000      # Market Cap minimal USD
 MIN_VOL_5M = 500      # Volume transaksi 5 menit minimal USD
 MIN_TRADES_5M = 15    # Jumlah transaksi total 5 menit minimal (Buy + Sell)
 
 # Apakah wajib ada link Twitter/Website/Telegram di DexScreener?
-# Set FALSE agar bot berani nyerok koin baru yang sosmed-nya belum diupdate DexScreener.
-REQUIRE_SOCIALS = False
+# BERSADARKAN HASIL SIMULASI: WAJIB TRUE! Token tanpa sosial 98% berujung kerugian masif.
+REQUIRE_SOCIALS = True
