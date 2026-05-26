@@ -254,9 +254,57 @@ def run_live_real_trader():
                         current_pnl_pct = ((current_price - entry_price) / entry_price) * 100
                         
                         # Dynamic Trade Mode Exit Logic
-                        trade_mode = os.getenv("TRADE_MODE", "OPTIMIZED").upper()
+                        from config import TRADE_MODE
+                        trade_mode = TRADE_MODE.upper()
                         
-                        if trade_mode == "ULTRA_SCALPER":
+                        if trade_mode == "HOLY_GRAIL_75WR":
+                            if not pos.get("partial_tp_hit", False) and price_gain_pct >= 15.0:
+                                raw_qty = int(pos["raw_qty"])
+                                partial_raw_qty = int(raw_qty * 0.50)
+                                
+                                print(f"\n✨ [HOLY GRAIL TP TRIGGERED] Jual 50% {pos['symbol']} @ ${current_price:.8f} (+{price_gain_pct:.2f}%)! Executing on-chain swap...", flush=True)
+                                
+                                sell_res = execute_solana_swap(
+                                    input_mint=addr,
+                                    output_mint="So11111111111111111111111111111111111111112",
+                                    amount_lamports=partial_raw_qty,
+                                    slippage_bps=slippage_bps,
+                                    jito_tip_lamports=jito_tip_lamports
+                                )
+                                
+                                if sell_res.get("status") == "success":
+                                    sol_received = float(sell_res["net_out_amount"]) / 1_000_000_000.0
+                                    print(f"✨ [REAL PARTIAL TP CONFIRMED] Successfully sold 50% of {pos['symbol']}!", flush=True)
+                                    print(f"   => SOL Received: {sol_received:.6f} SOL", flush=True)
+                                    print(f"   => Tx Signature: {sell_res['explorer_url']}", flush=True)
+                                    
+                                    orig_inv = pos.get("original_investment_sol", pos["net_investment_sol"])
+                                    partial_pnl = sol_received - (0.50 * orig_inv)
+                                    pos["total_pnl_sol"] = pos.get("total_pnl_sol", 0.0) + partial_pnl
+                                    
+                                    pos["raw_qty"] = str(raw_qty - partial_raw_qty)
+                                    pos["qty"] *= 0.50
+                                    pos["partial_tp_hit"] = True
+                                    pos["remaining_pct"] = 0.50
+                                    pos["net_investment_sol"] *= 0.50
+                                    closed_any = True
+                                else:
+                                    print(f"[ERROR] Failed to execute partial TP sell transaction: {sell_res.get('message')}", flush=True)
+                                
+                            if pos.get("partial_tp_hit", False):
+                                if price_gain_pct >= 200.0:
+                                    sl_price = highest_price * 0.70
+                                    trail_level = "HG RUNNER TSL (30%)"
+                                elif price_gain_pct >= 50.0:
+                                    sl_price = highest_price * 0.80
+                                    trail_level = "HG RUNNER TSL (20%)"
+                                else:
+                                    sl_price = entry_price * 1.02
+                                    trail_level = "HG BE-LOCK (+2%)"
+                            else:
+                                sl_price = entry_price * 0.85
+                                trail_level = "HG INITIAL SL (15%)"
+                        elif trade_mode == "ULTRA_SCALPER":
                             if not pos.get("partial_tp_hit", False) and price_gain_pct >= 15.0:
                                 raw_qty = int(pos["raw_qty"])
                                 partial_raw_qty = int(raw_qty * 0.80)
@@ -284,6 +332,7 @@ def run_live_real_trader():
                                     pos["raw_qty"] = str(raw_qty - partial_raw_qty)
                                     pos["qty"] *= 0.20
                                     pos["partial_tp_hit"] = True
+                                    pos["remaining_pct"] = 0.20
                                     pos["net_investment_sol"] *= 0.20
                                     closed_any = True
                                 else:
@@ -373,10 +422,11 @@ def run_live_real_trader():
                             if sell_res.get("status") == "success":
                                 sol_received = float(sell_res["net_out_amount"]) / 1_000_000_000.0
                                 
-                                orig_inv = pos.get("original_investment_sol", pos["net_investment_sol"] / 0.20 if pos.get("partial_tp_hit") else pos["net_investment_sol"])
+                                rem_pct = pos.get("remaining_pct", 0.20)
+                                orig_inv = pos.get("original_investment_sol", pos["net_investment_sol"] / rem_pct if pos.get("partial_tp_hit") else pos["net_investment_sol"])
                                 
                                 if pos.get("partial_tp_hit", False):
-                                    pnl_sol = pos.get("total_pnl_sol", 0.0) + (sol_received - (0.20 * orig_inv))
+                                    pnl_sol = pos.get("total_pnl_sol", 0.0) + (sol_received - (rem_pct * orig_inv))
                                 else:
                                     pnl_sol = sol_received - orig_inv
                                 
@@ -438,7 +488,8 @@ def run_live_real_trader():
                         
                         print(f"  [SCANNER] Auditing candidate {gem['symbol']} | Safety Status: {security['status']} | Score: {score}/100", flush=True)
                         
-                        min_entry_score = int(os.getenv("MIN_ENTRY_SCORE", "75"))
+                        from config import MIN_ENTRY_SCORE
+                        min_entry_score = MIN_ENTRY_SCORE
                         if security["status"] in ["CLEAN & SAFE", "WARNINGS"] and score >= min_entry_score:
                             if score > best_score:
                                 best_score = score

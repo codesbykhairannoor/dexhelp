@@ -268,9 +268,42 @@ def run_live_paper_trader():
                         current_pnl_pct = ((current_price - entry_price) / entry_price) * 100
                         
                         # Dynamic Trade Mode Exit Logic
-                        trade_mode = os.getenv("TRADE_MODE", "OPTIMIZED").upper()
+                        from config import TRADE_MODE
+                        trade_mode = TRADE_MODE.upper()
                         
-                        if trade_mode == "ULTRA_SCALPER":
+                        if trade_mode == "HOLY_GRAIL_75WR":
+                            if not pos.get("partial_tp_hit", False) and price_gain_pct >= 15.0:
+                                partial_qty = pos["qty"] * 0.50
+                                partial_val = partial_qty * current_price
+                                portfolio["wallet_balance"] += partial_val
+                                print(f"\n✨ [HOLY GRAIL TP] Mengamankan 50% Profit {pos['symbol']} @ ${current_price:.8f} (+{price_gain_pct:.2f}%)!", flush=True)
+                                
+                                orig_gross = pos.get("original_gross_investment", pos.get("gross_investment", pos["net_investment"]))
+                                partial_pnl = partial_val - (0.50 * orig_gross)
+                                pos["total_pnl_usd"] = pos.get("total_pnl_usd", 0.0) + partial_pnl
+                                
+                                pos["qty"] *= 0.50
+                                pos["partial_tp_hit"] = True
+                                pos["remaining_pct"] = 0.50
+                                if "gross_investment" in pos:
+                                    pos["gross_investment"] *= 0.50
+                                pos["net_investment"] *= 0.50
+                                closed_any = True
+                                
+                            if pos.get("partial_tp_hit", False):
+                                if price_gain_pct >= 200.0:
+                                    sl_price = highest_price * 0.70
+                                    trail_level = "HG RUNNER TSL (30%)"
+                                elif price_gain_pct >= 50.0:
+                                    sl_price = highest_price * 0.80
+                                    trail_level = "HG RUNNER TSL (20%)"
+                                else:
+                                    sl_price = entry_price * 1.02
+                                    trail_level = "HG BE-LOCK (+2%)"
+                            else:
+                                sl_price = entry_price * 0.85
+                                trail_level = "HG INITIAL SL (15%)"
+                        elif trade_mode == "ULTRA_SCALPER":
                             if not pos.get("partial_tp_hit", False) and price_gain_pct >= 15.0:
                                 partial_qty = pos["qty"] * 0.80
                                 partial_val = partial_qty * current_price
@@ -284,6 +317,7 @@ def run_live_paper_trader():
                                 
                                 pos["qty"] *= 0.20
                                 pos["partial_tp_hit"] = True
+                                pos["remaining_pct"] = 0.20
                                 if "gross_investment" in pos:
                                     pos["gross_investment"] *= 0.20
                                 pos["net_investment"] *= 0.20
@@ -361,10 +395,11 @@ def run_live_paper_trader():
                             exit_price = current_price
                             net_exit_value = pos["qty"] * exit_price
                             
-                            orig_gross = pos.get("original_gross_investment", pos.get("gross_investment", pos["net_investment"]) / 0.20 if pos.get("partial_tp_hit") else pos.get("gross_investment", pos["net_investment"]))
+                            rem_pct = pos.get("remaining_pct", 0.20)
+                            orig_gross = pos.get("original_gross_investment", pos.get("gross_investment", pos["net_investment"]) / rem_pct if pos.get("partial_tp_hit") else pos.get("gross_investment", pos["net_investment"]))
                             
                             if pos.get("partial_tp_hit", False):
-                                total_pnl_usd = pos.get("total_pnl_usd", 0.0) + (net_exit_value - (0.20 * orig_gross))
+                                total_pnl_usd = pos.get("total_pnl_usd", 0.0) + (net_exit_value - (rem_pct * orig_gross))
                                 realized_pnl_pct = (total_pnl_usd / orig_gross) * 100
                                 pnl_usd = total_pnl_usd
                             else:
@@ -385,6 +420,8 @@ def run_live_paper_trader():
                                 "exit_price": exit_price,
                                 "pnl_pct": realized_pnl_pct,
                                 "pnl_usd": pnl_usd,
+                                "highest_price_reached": highest_price,
+                                "sl_trigger_price": sl_price,
                                 "closed_at": time.strftime('%Y-%m-%d %H:%M:%S'),
                                 "exit_reason": trail_level
                             })
@@ -420,7 +457,8 @@ def run_live_paper_trader():
                         
                         print(f"  [SCAN] {gem['symbol']} | Safety: {security['status']} | Score: {score}/100 | Age: {gem.get('age_estimate_sec',0)//60}m")
                         
-                        min_entry_score = int(os.getenv("MIN_ENTRY_SCORE", "75"))
+                        from config import MIN_ENTRY_SCORE
+                        min_entry_score = MIN_ENTRY_SCORE
                         if security["status"] in ["CLEAN & SAFE", "WARNINGS"] and score >= min_entry_score:
                             # Fixed sizing: $10.00 flat margin per trade
                             trade_allocation = 10.00

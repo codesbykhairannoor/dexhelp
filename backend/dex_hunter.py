@@ -463,15 +463,17 @@ def _fetch_candidates() -> list:
                     
                     print(f"  [AUDIT] {symbol} | Liq: ${liq:.0f} | Vol5m: ${v5m:.0f} | Trades: {trade5m} | Buys/Sells: {buys}/{sells}")
                     
-                    # V24.0 DYNAMIC CONFIGURATOR FILTERS
-                    # All parameters are now dynamically loaded from .env
-                    min_liq = int(os.getenv("MIN_LIQ", "3000"))
-                    min_mcap = int(os.getenv("MIN_MCAP", "10000"))
-                    req_socials = os.getenv("REQUIRE_SOCIALS", "TRUE").upper() == "TRUE"
-                    min_vol = int(os.getenv("MIN_VOL_5M", "5000"))
-                    min_trades = int(os.getenv("MIN_TRADES_5M", "60"))
+                    # V25.0 DYNAMIC CONFIGURATOR FILTERS
+                    # All parameters are now loaded from config.py instead of .env
+                    from config import MIN_LIQ, MIN_MCAP, REQUIRE_SOCIALS, MIN_VOL_5M, MIN_TRADES_5M
+                    min_liq = MIN_LIQ
+                    min_mcap = MIN_MCAP
+                    req_socials = REQUIRE_SOCIALS
+                    min_vol = MIN_VOL_5M
+                    min_trades = MIN_TRADES_5M
                     
-                    if liq >= min_liq or (liq == 0 and mcap >= min_mcap):
+                    # Bypass DexScreener $0 delay if volume is huge
+                    if liq >= min_liq or (liq == 0 and (mcap >= min_mcap or v5m >= min_vol)):
                         
                         # Require Social Presence
                         info = pair.get("info", {})
