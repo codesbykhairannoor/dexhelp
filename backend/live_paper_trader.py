@@ -464,6 +464,49 @@ def run_live_paper_trader():
                             trade_allocation = 10.00
                             
                             if portfolio["wallet_balance"] >= trade_allocation:
+                                # --- JUPITER PRICE IMPACT PRE-FLIGHT CHECK ---
+                                jup_api_key = os.getenv("JUPITER_API_KEY", "")
+                                headers = {"x-api-key": jup_api_key, "Accept": "application/json"} if jup_api_key else {"Accept": "application/json"}
+                                
+                                sol_price = 160.0
+                                try:
+                                    sol_price_r = requests.get("https://api.jup.ag/price/v3?ids=So11111111111111111111111111111111111111112", headers=headers, timeout=3)
+                                    if sol_price_r.status_code == 200:
+                                        sol_data = sol_price_r.json().get("data", {})
+                                        sol_price = float(sol_data.get("So11111111111111111111111111111111111111112", {}).get("price", 160.0))
+                                except Exception:
+                                    pass
+                                
+                                sol_amount = trade_allocation / sol_price
+                                amount_lamports = int(sol_amount * 1_000_000_000)
+                                quote_url = f"https://api.jup.ag/swap/v1/quote?inputMint=So11111111111111111111111111111111111111112&outputMint={addr}&amount={amount_lamports}&slippageBps=250"
+                                
+                                jup_ok = False
+                                price_impact_pct = 0.0
+                                reason = ""
+                                try:
+                                    qr = requests.get(quote_url, headers=headers, timeout=5)
+                                    if qr.status_code == 200:
+                                        q_res = qr.json()
+                                        price_impact = q_res.get("priceImpactPct")
+                                        if price_impact is not None:
+                                            price_impact_pct = float(price_impact) * 100
+                                            jup_ok = True
+                                        else:
+                                            reason = "NO_PRICE_IMPACT_DATA"
+                                    else:
+                                        reason = f"HTTP_ERROR_{qr.status_code}"
+                                except Exception as e:
+                                    reason = f"EXCEPTION_{type(e).__name__}"
+                                
+                                if not jup_ok:
+                                    print(f"  [DITOLAK] Jupiter Pre-flight Quote gagal untuk {gem['symbol']}. Alasan: {reason}")
+                                    continue
+                                
+                                if price_impact_pct > 2.0:
+                                    print(f"  [DITOLAK] Jupiter Pre-flight Quote: Price Impact terlalu besar untuk {gem['symbol']} ({price_impact_pct:.2f}% > 2.0%)")
+                                    continue
+                                
                                 cost_per_trade = gas_fee + (trade_allocation * swap_fee_pct) + (trade_allocation * slippage_pct)
                                 net_investment = trade_allocation - cost_per_trade
                                 

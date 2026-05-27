@@ -504,6 +504,36 @@ def run_live_real_trader():
                         
                         # Wallet balance check
                         if live_sol_balance >= (sol_allocation + 0.006): # allocation + dynamic prioritization gas buffer
+                            # --- JUPITER PRICE IMPACT PRE-FLIGHT CHECK ---
+                            headers = {"x-api-key": jup_api_key, "Accept": "application/json"} if jup_api_key else {"Accept": "application/json"}
+                            quote_url = f"https://api.jup.ag/swap/v1/quote?inputMint=So11111111111111111111111111111111111111112&outputMint={addr}&amount={sol_allocation_lamports}&slippageBps={slippage_bps}"
+                            
+                            jup_ok = False
+                            price_impact_pct = 0.0
+                            reason = ""
+                            try:
+                                qr = requests.get(quote_url, headers=headers, timeout=5)
+                                if qr.status_code == 200:
+                                    q_res = qr.json()
+                                    price_impact = q_res.get("priceImpactPct")
+                                    if price_impact is not None:
+                                        price_impact_pct = float(price_impact) * 100
+                                        jup_ok = True
+                                    else:
+                                        reason = "NO_PRICE_IMPACT_DATA"
+                                else:
+                                    reason = f"HTTP_ERROR_{qr.status_code}"
+                            except Exception as e:
+                                reason = f"EXCEPTION_{type(e).__name__}"
+                            
+                            if not jup_ok:
+                                print(f"  [DITOLAK] Jupiter Pre-flight Quote gagal untuk {best_candidate['symbol']}. Alasan: {reason}", flush=True)
+                                continue
+                            
+                            if price_impact_pct > 2.0:
+                                print(f"  [DITOLAK] Jupiter Pre-flight Quote: Price Impact terlalu besar untuk {best_candidate['symbol']} ({price_impact_pct:.2f}% > 2.0%)", flush=True)
+                                continue
+                            
                             print(f"🛒 [BUY SWAP INITIATED] Submitting transaction to buy {best_candidate['symbol']}...", flush=True)
                             
                             buy_res = execute_solana_swap(

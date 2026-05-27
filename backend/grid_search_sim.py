@@ -110,7 +110,7 @@ if __name__ == "__main__":
     
     combinations = list(itertools.product(req_socials_opts, min_liq_opts, min_score_opts, trade_mode_opts))
     
-    print(f"🔬 Memulai Grid Search: {len(combinations)} Skenario...")
+    print(f"[SIM] Memulai Grid Search: {len(combinations)} Skenario...")
     
     results = []
     # Jalankan simulasi (kita loop 10x per kombinasi untuk average)
@@ -137,7 +137,7 @@ if __name__ == "__main__":
     # Sort berdasarkan PnL terbaik
     results.sort(key=lambda x: x["avg_pnl"], reverse=True)
     
-    print("\n🏆 TOP 5 SKENARIO TERBAIK (30 HARI):")
+    print("\n[TOP 5] TOP 5 SKENARIO TERBAIK (30 HARI):")
     print("-" * 100)
     print(f"{'SOSIAL':<8} | {'MIN LIQ':<8} | {'SCORE':<5} | {'MODE':<12} | {'TRADES':<8} | {'WIN RATE':<8} | {'EST PnL (USD)'}")
     print("-" * 100)
@@ -145,7 +145,7 @@ if __name__ == "__main__":
         soc = "YES" if r["socials"] else "NO"
         print(f"{soc:<8} | ${r['liq']:<7} | {r['score']:<5} | {r['mode']:<12} | {r['avg_trades']:<8.1f} | {r['avg_wr']:<7.1f}% | ${r['avg_pnl']:+.2f}")
         
-    print("\n💀 TOP 5 SKENARIO TERBURUK:")
+    print("\n[WORST 5] TOP 5 SKENARIO TERBURUK:")
     print("-" * 100)
     for r in results[-5:]:
         soc = "YES" if r["socials"] else "NO"

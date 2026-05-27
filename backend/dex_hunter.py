@@ -68,9 +68,28 @@ def check_token_security(chain: str, address: str) -> dict:
                 data = r.json()
                 score = data.get("score", 0)
                 risk_level = data.get("riskLevel", "Good")
+                total_supply = float(data.get("token", {}).get("supply", 0) or 1)
+
+                # Calculate token age in seconds from detectedAt
+                detected_at_str = data.get("detectedAt", "")
+                is_new_token = True
+                if detected_at_str:
+                    try:
+                        # Clean up sub-seconds and Z if needed for parsing
+                        # E.g. '2024-05-29T00:47:54.994464097Z' -> '2024-05-29 00:47:54'
+                        cleaned_dt = detected_at_str.split(".")[0].replace("T", " ").replace("Z", "").strip()
+                        from datetime import datetime, timezone
+                        detected_dt = datetime.strptime(cleaned_dt, "%Y-%m-%d %H:%M:%S").replace(tzinfo=timezone.utc)
+                        now_dt = datetime.now(timezone.utc)
+                        token_age_sec = (now_dt - detected_dt).total_seconds()
+                        if token_age_sec > 86400: # Older than 24 hours
+                            is_new_token = False
+                    except Exception:
+                        pass
                 
-                # Check RugCheck score thresholds (Strict limit lowered from 1500 to 600)
-                if score > 600 or risk_level in ["Danger", "Rugged"]:
+                # Check RugCheck score thresholds (Strict limit lowered to 600 for new tokens, relaxed to 1200 for mature ones)
+                score_threshold = 1200 if not is_new_token else 600
+                if score > score_threshold or risk_level in ["Danger", "Rugged"]:
                     flags.append(f"RUGCHECK_DANGER (Score:{score})")
                     is_safe = False
                 elif score > 250:
@@ -86,6 +105,69 @@ def check_token_security(chain: str, address: str) -> dict:
                     if risk_level == "danger" or any(x in risk_name for x in ["unlocked", "mutable", "single holder", "mintable"]):
                         flags.append(f"RC_{risk.get('name', '').upper().replace(' ', '_')}")
                         is_safe = False
+
+                # Insider & Creator checks only run on NEW tokens (< 24 hours) to prevent false positives on mature tokens
+                if is_new_token:
+                    # -------------------------------------------------------------
+                    # ADVANCED AUDITS: Insider Wallet Accumulation & Cabals
+                    # -------------------------------------------------------------
+                    top_holders = data.get("topHolders", [])
+                    insider_pct = 0.0
+                    if isinstance(top_holders, list):
+                        for h in top_holders:
+                            if h.get("insider") is True:
+                                insider_pct += float(h.get("pct", 0) or 0)
+                    if insider_pct > 15.0:
+                        flags.append(f"RC_INSIDER_HOLDINGS ({insider_pct:.1f}%)")
+                        is_safe = False
+
+                    # Insider Network Size check
+                    insider_networks = data.get("insiderNetworks", [])
+                    if isinstance(insider_networks, list) and total_supply > 0:
+                        for net in insider_networks:
+                            net_pct = (float(net.get("tokenAmount", 0) or 0) / total_supply) * 100
+                            if net_pct > 15.0:
+                                flags.append(f"RC_INSIDER_NETWORK_{str(net.get('id', 'cabal')).upper().replace('-', '_')} ({net_pct:.1f}%)")
+                                is_safe = False
+
+                    # -------------------------------------------------------------
+                    # ADVANCED AUDITS: Creator Holding & Token Check
+                    # -------------------------------------------------------------
+                    creator = data.get("creator")
+                    creator_bal = float(data.get("creatorBalance", 0) or 0)
+                    if creator and total_supply > 0:
+                        creator_pct = (creator_bal / total_supply) * 100
+                        if creator_pct > 5.0:
+                            flags.append(f"RC_CREATOR_HOLDINGS ({creator_pct:.1f}%)")
+                            is_safe = False
+
+                # -------------------------------------------------------------
+                # ADVANCED AUDITS: Programmatic LP Lock/Burn Check (Primary Pool only)
+                # -------------------------------------------------------------
+                markets = data.get("markets", [])
+                if isinstance(markets, list) and len(markets) > 0:
+                    primary_market = None
+                    max_lp_usd = -1.0
+                    for m in markets:
+                        market_type = str(m.get("marketType", "")).lower()
+                        # Only look at Raydium, Meteora, Orca pools
+                        if any(x in market_type for x in ["raydium", "meteora", "orca"]):
+                            lp = m.get("lp", {})
+                            if lp:
+                                total_lp_usd = float(lp.get("quoteUSD", 0) or 0) + float(lp.get("baseUSD", 0) or 0)
+                                if total_lp_usd > max_lp_usd:
+                                    max_lp_usd = total_lp_usd
+                                    primary_market = m
+                    
+                    if primary_market:
+                        lp = primary_market.get("lp", {})
+                        lp_unlocked = float(lp.get("lpUnlocked", 0) or 0)
+                        lp_locked_pct = float(lp.get("lpLockedPct", 0) or 0)
+                        # Block if the primary LP pool is not locked/burnt
+                        # If it is a mature token, we skip unlocked LP check as other users create unlocked pools
+                        if is_new_token and lp_locked_pct < 90.0 and lp_unlocked > 0:
+                            flags.append(f"RC_UNLOCKED_LP_PRIMARY_{primary_market.get('marketType','').upper()} ({lp_locked_pct:.1f}% Locked)")
+                            is_safe = False
             else:
                 flags.append(f"RUGCHECK_API_ERROR_STATUS_{r.status_code}")
                 is_safe = False
