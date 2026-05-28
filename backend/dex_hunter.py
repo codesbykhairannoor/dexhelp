@@ -493,34 +493,33 @@ def _fetch_candidates() -> list:
     """V16.5 BIRDEYE ZERO-MINUTE HUNTER: Fetch ultra-fresh tokens from RugCheck and verify on Birdeye"""
     candidates = {}
     
-    # 1. Fetch ultra-fresh tokens from RugCheck
-    new_tokens = []
-    try:
-        rugcheck_key = os.getenv("RUGCHECK_API_KEY", "")
-        headers = {"X-API-KEY": rugcheck_key} if rugcheck_key else {}
-        r = requests.get('https://api.rugcheck.xyz/v1/stats/new_tokens', headers=headers, timeout=5)
-        if r.status_code == 200:
-            new_tokens = r.json()
-    except Exception as e:
-        print(f"[DEX HUNTER] Gagal mengambil new_tokens: {e}")
-        
-    if not new_tokens:
-        return []
-
-    # 2. Extract mints for bulk query to DexScreener
-    # V21.0: We will query up to 60 tokens from RugCheck.
-    offset = min(15, max(0, len(new_tokens) - 60))
-    target_tokens = new_tokens[offset:offset+60]
-    
+    # 1. Fetch active trending tokens from DexScreener (Profiles & Boosts)
     mints = []
-    for t in target_tokens:
-        mint = t.get('mint')
-        mint_auth = t.get('mintAuthority', '')
-        freeze_auth = t.get('freezeAuthority', '')
-        # Basic pre-filter: Token MUST be safe on chain
-        if mint and not mint_auth and not freeze_auth:
-            mints.append(mint)
+    try:
+        # Get recently updated profiles (active devs)
+        r_prof = requests.get('https://api.dexscreener.com/token-profiles/latest/v1', timeout=5)
+        if r_prof.status_code == 200:
+            for t in r_prof.json():
+                if t.get('chainId') == 'solana' and t.get('tokenAddress'):
+                    mints.append(t.get('tokenAddress'))
+                    
+        # Get top boosted tokens (high visibility)
+        r_boost = requests.get('https://api.dexscreener.com/token-boosts/top/v1', timeout=5)
+        if r_boost.status_code == 200:
+            for t in r_boost.json():
+                if t.get('chainId') == 'solana' and t.get('tokenAddress'):
+                    mints.append(t.get('tokenAddress'))
+                    
+        # Remove duplicates
+        mints = list(set(mints))
+        
+        # Limit to 60 tokens for performance
+        if len(mints) > 60:
+            mints = mints[:60]
             
+    except Exception as e:
+        print(f"[DEX HUNTER] Gagal mengambil token aktif dari DexScreener: {e}")
+        
     if not mints:
         return []
         
@@ -533,7 +532,7 @@ def _fetch_candidates() -> list:
         mints_str = ",".join(batch)
         try:
             ds_url = f"https://api.dexscreener.com/latest/dex/tokens/{mints_str}"
-            ds_r = requests.get(ds_url, timeout=5)
+            ds_r = requests.get(ds_url, timeout=10)
             
             if ds_r.status_code == 200:
                 pairs = ds_r.json().get('pairs') or []
