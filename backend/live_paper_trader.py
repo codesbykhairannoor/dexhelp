@@ -543,9 +543,12 @@ def run_live_paper_trader():
                                     if qr.status_code == 200:
                                         q_res = qr.json()
                                         price_impact = q_res.get("priceImpactPct")
-                                        if price_impact is not None:
-                                            price_impact_pct = float(price_impact) * 100
-                                            jup_ok = True
+                                        if price_impact is not None and str(price_impact).strip() != "":
+                                            try:
+                                                price_impact_pct = float(price_impact) * 100
+                                                jup_ok = True
+                                            except ValueError:
+                                                reason = f"INVALID_PRICE_IMPACT_FORMAT_{price_impact}"
                                         else:
                                             reason = "NO_PRICE_IMPACT_DATA"
                                     else:
