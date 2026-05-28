@@ -31,8 +31,15 @@ def load_live_portfolio() -> dict:
         try:
             with open(PORTFOLIO_FILE, "r") as f:
                 data = json.load(f)
+                dirty = False
                 if "cooldowns" not in data:
                     data["cooldowns"] = {}
+                    dirty = True
+                if "post_exit_monitoring" not in data:
+                    data["post_exit_monitoring"] = {}
+                    dirty = True
+                if dirty:
+                    save_live_portfolio(data)
                 return data
         except Exception:
             pass
@@ -41,7 +48,8 @@ def load_live_portfolio() -> dict:
         "wallet_address": "",
         "active_positions": {},    # token_address -> trade_info
         "trade_history": [],       # Completed real trades list
-        "cooldowns": {}            # token_address -> epoch_timestamp_when_cooldown_ends
+        "cooldowns": {},            # token_address -> epoch_timestamp_when_cooldown_ends
+        "post_exit_monitoring": {}
     }
 
 def save_live_portfolio(portfolio: dict):
@@ -116,12 +124,15 @@ def run_live_real_trader():
             
             # --- PHASE 1: HIGH-FREQUENCY ACTIVE TRADES MONITORING ---
             active_positions = portfolio["active_positions"]
+            post_exit_monitoring = portfolio.get("post_exit_monitoring", {})
             closed_any = False
             
-            if active_positions:
-                print(f"[INFO] Monitoring {len(active_positions)} active on-chain positions...")
+            if active_positions or post_exit_monitoring:
+                active_count = len(active_positions)
+                post_count = len(post_exit_monitoring)
+                print(f"[INFO] Monitoring {active_count} active & {post_count} post-exit on-chain positions...", flush=True)
                 try:
-                    addr_list = list(active_positions.keys())
+                    addr_list = list(active_positions.keys()) + list(post_exit_monitoring.keys())
                     try:
                         addr_str = ",".join(addr_list)
                         url = f"https://api.jup.ag/price/v3?ids={addr_str}"
@@ -225,6 +236,14 @@ def run_live_real_trader():
                                     
                                     # Persist 24-hour Cooldown Shield for rugged tokens
                                     portfolio.setdefault("cooldowns", {})[addr] = time.time() + 86400
+                                    portfolio.setdefault("post_exit_monitoring", {})[addr] = {
+                                        "symbol": pos["symbol"],
+                                        "exit_price": exit_price,
+                                        "exit_time": time.time(),
+                                        "highest_price_post_exit": exit_price,
+                                        "lowest_price_post_exit": exit_price,
+                                        "exit_reason": "EMERGENCY_FORCE_CLOSE_RUG"
+                                    }
                                     print(f"   => [SHIELD] Alamat {addr} masuk daftar Cooldown 24 Jam.", flush=True)
                                     
                                     portfolio["trade_history"].append({
@@ -437,6 +456,14 @@ def run_live_real_trader():
                                 
                                 # Persist 4-hour Cooldown Shield to prevent re-entries
                                 portfolio.setdefault("cooldowns", {})[addr] = time.time() + 14400
+                                portfolio.setdefault("post_exit_monitoring", {})[addr] = {
+                                    "symbol": pos["symbol"],
+                                    "exit_price": current_price if price_gain_pct >= 10.0 else sl_price,
+                                    "exit_time": time.time(),
+                                    "highest_price_post_exit": current_price if price_gain_pct >= 10.0 else sl_price,
+                                    "lowest_price_post_exit": current_price if price_gain_pct >= 10.0 else sl_price,
+                                    "exit_reason": trail_level
+                                }
                                 print(f"   => [SHIELD] Alamat {addr} masuk daftar Cooldown 4 Jam.", flush=True)
                                 
                                 portfolio["trade_history"].append({
@@ -453,6 +480,32 @@ def run_live_real_trader():
                                 closed_any = True
                             else:
                                 print(f"[CRITICAL ERROR] Failed to execute stop loss sell transaction: {sell_res.get('message')}", flush=True)
+                                
+                    # --- POST-EXIT TRACKING LOOP ---
+                    post_exit_monitoring = portfolio.get("post_exit_monitoring", {})
+                    for addr, post_pos in list(post_exit_monitoring.items()):
+                        # Clean up after 15 minutes (900 seconds)
+                        if time.time() - post_pos.get("exit_time", 0) > 900:
+                            del post_exit_monitoring[addr]
+                            closed_any = True
+                            continue
+                            
+                        if addr in price_map and price_map[addr]["price"] > 0:
+                            current_price = price_map[addr]["price"]
+                            exit_price = post_pos["exit_price"]
+                            
+                            # Track highest/lowest price post-exit
+                            highest_price = max(post_pos.get("highest_price_post_exit", exit_price), current_price)
+                            lowest_price = min(post_pos.get("lowest_price_post_exit", exit_price), current_price)
+                            
+                            post_pos["highest_price_post_exit"] = highest_price
+                            post_pos["lowest_price_post_exit"] = lowest_price
+                            
+                            peak_pnl_post_exit = ((highest_price - exit_price) / exit_price) * 100
+                            current_pnl_since_exit = ((current_price - exit_price) / exit_price) * 100
+                            
+                            print(f"  ⚡ [POST-EXIT] {post_pos['symbol']} | Keluar @ ${exit_price:.8f} ({post_pos.get('exit_reason', 'SL')}) | Live: ${current_price:.8f} | Peak Sejak Keluar: {peak_pnl_post_exit:+.2f}% | Current: {current_pnl_since_exit:+.2f}%", flush=True)
+                            closed_any = True
                 except Exception as e:
                     print(f"  [WARN] Error during bulk price update: {e}", flush=True)
             else:

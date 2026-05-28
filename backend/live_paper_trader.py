@@ -31,7 +31,8 @@ def load_portfolio() -> dict:
         "initial_capital": 1000.00,
         "active_positions": {},    # token_address -> trade_info
         "trade_history": [],       # List of completed simulated trades
-        "cooldowns": {}            # token_address -> epoch_timestamp_when_cooldown_ends
+        "cooldowns": {},            # token_address -> epoch_timestamp_when_cooldown_ends
+        "post_exit_monitoring": {}
     }
     
     if os.path.exists(PORTFOLIO_FILE):
@@ -43,6 +44,9 @@ def load_portfolio() -> dict:
                 dirty = False
                 if "cooldowns" not in data:
                     data["cooldowns"] = {}
+                    dirty = True
+                if "post_exit_monitoring" not in data:
+                    data["post_exit_monitoring"] = {}
                     dirty = True
                 if "initial_capital" not in data:
                     data["initial_capital"] = data.get("wallet_balance", 1000.00)
@@ -135,10 +139,13 @@ def run_live_paper_trader():
             
             # --- PHASE 1: UPDATE LIVE ACTIVE POSITIONS ---
             active_positions = portfolio["active_positions"]
+            post_exit_monitoring = portfolio.get("post_exit_monitoring", {})
             closed_any = False
             
-            if active_positions:
-                print(f"[INFO] Memantau {len(active_positions)} posisi aktif secara live...")
+            if active_positions or post_exit_monitoring:
+                active_count = len(active_positions)
+                post_count = len(post_exit_monitoring)
+                print(f"[INFO] Memantau {active_count} posisi aktif & {post_count} koin pasca-exit secara live...")
                 try:
                     # Load JUPITER_API_KEY from .env
                     jupiter_key = os.getenv("JUPITER_API_KEY", "jup_0872d0ca9886efca00560439b283c2bc25821ab36727457792ce61ca352c2f60")
@@ -152,7 +159,7 @@ def run_live_paper_trader():
                                         break
 
                     # Bulk API Query to prevent rate limiting (429) via Jupiter Premium V3
-                    addr_list = list(active_positions.keys())
+                    addr_list = list(active_positions.keys()) + list(post_exit_monitoring.keys())
                     addr_str = ",".join(addr_list)
                     url = f"https://api.jup.ag/price/v3?ids={addr_str}"
                     headers = {
@@ -242,6 +249,14 @@ def run_live_paper_trader():
                                 print(f"     => Harga Jual Estimasi: ${exit_price:.8f} | Realized PnL: {realized_pnl_pct:+.2f}% (${pnl_usd:+.2f})")
                                 
                                 portfolio.setdefault("cooldowns", {})[addr] = time.time() + 86400  # 24 hour cooldown for rugged tokens
+                                portfolio.setdefault("post_exit_monitoring", {})[addr] = {
+                                    "symbol": pos["symbol"],
+                                    "exit_price": exit_price,
+                                    "exit_time": time.time(),
+                                    "highest_price_post_exit": exit_price,
+                                    "lowest_price_post_exit": exit_price,
+                                    "exit_reason": "EMERGENCY_FORCE_CLOSE_RUG"
+                                }
                                 portfolio["wallet_balance"] += pos["qty"] * exit_price
                                 portfolio["trade_history"].append({
                                     "symbol": pos["symbol"],
@@ -411,6 +426,14 @@ def run_live_paper_trader():
                             print(f"     => Harga Jual: ${exit_price:.8f} | Realized PnL: {realized_pnl_pct:+.2f}% (${pnl_usd:+.2f})")
                             
                             portfolio.setdefault("cooldowns", {})[addr] = time.time() + 14400  # 4 Hour cooldown
+                            portfolio.setdefault("post_exit_monitoring", {})[addr] = {
+                                "symbol": pos["symbol"],
+                                "exit_price": exit_price,
+                                "exit_time": time.time(),
+                                "highest_price_post_exit": exit_price,
+                                "lowest_price_post_exit": exit_price,
+                                "exit_reason": trail_level
+                            }
                             print(f"     => [SHIELD] Alamat {addr} masuk daftar Cooldown 4 Jam.")
                             
                             portfolio["wallet_balance"] += net_exit_value
@@ -427,6 +450,32 @@ def run_live_paper_trader():
                                 "exit_reason": trail_level
                             })
                             del active_positions[addr]
+                            closed_any = True
+                            
+                    # --- POST-EXIT TRACKING LOOP ---
+                    post_exit_monitoring = portfolio.get("post_exit_monitoring", {})
+                    for addr, post_pos in list(post_exit_monitoring.items()):
+                        # Clean up after 15 minutes (900 seconds)
+                        if time.time() - post_pos.get("exit_time", 0) > 900:
+                            del post_exit_monitoring[addr]
+                            closed_any = True
+                            continue
+                            
+                        if addr in price_map and price_map[addr]["price"] > 0:
+                            current_price = price_map[addr]["price"]
+                            exit_price = post_pos["exit_price"]
+                            
+                            # Track highest/lowest price post-exit
+                            highest_price = max(post_pos.get("highest_price_post_exit", exit_price), current_price)
+                            lowest_price = min(post_pos.get("lowest_price_post_exit", exit_price), current_price)
+                            
+                            post_pos["highest_price_post_exit"] = highest_price
+                            post_pos["lowest_price_post_exit"] = lowest_price
+                            
+                            peak_pnl_post_exit = ((highest_price - exit_price) / exit_price) * 100
+                            current_pnl_since_exit = ((current_price - exit_price) / exit_price) * 100
+                            
+                            print(f"  ⚡ [POST-EXIT] {post_pos['symbol']} | Keluar @ ${exit_price:.8f} ({post_pos.get('exit_reason', 'SL')}) | Live: ${current_price:.8f} | Peak Sejak Keluar: {peak_pnl_post_exit:+.2f}% | Current: {current_pnl_since_exit:+.2f}%")
                             closed_any = True
                 except Exception as e:
                     print(f"  [WARN] Gagal melakukan bulk update harga: {e}")

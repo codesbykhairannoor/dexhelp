@@ -53,6 +53,21 @@ def reset_portfolio():
             print(f"   Semua riwayat transaksi lama pada {filename} telah dihapus.")
         except Exception as e:
             print(f"[ERROR] Gagal mereset {label}: {e}")
+            
+    # Clear trades table in sqlite database
+    try:
+        db_path = os.path.join(CURRENT_DIR, "trading_bot.db")
+        if os.path.exists(db_path):
+            import sqlite3
+            conn = sqlite3.connect(db_path)
+            cursor = conn.cursor()
+            cursor.execute("DELETE FROM trades")
+            conn.commit()
+            conn.close()
+            print("🗑️  DATABASE SQL SQLite (trading_bot.db) trades table successfully cleared!")
+    except Exception as e:
+        print(f"[ERROR] Gagal mereset database SQL SQLite: {e}")
+        
     print("=" * 80)
 
 if __name__ == "__main__":
