@@ -62,7 +62,9 @@ def check_token_security(chain: str, address: str) -> dict:
         rugcheck_ok = False
         try:
             rug_url = f"https://api.rugcheck.xyz/v1/tokens/{address}/report"
-            r = requests.get(rug_url, timeout=5)
+            rugcheck_key = os.getenv("RUGCHECK_API_KEY", "")
+            headers = {"X-API-KEY": rugcheck_key} if rugcheck_key else {}
+            r = requests.get(rug_url, headers=headers, timeout=5)
             if r.status_code == 200:
                 rugcheck_ok = True
                 data = r.json()
@@ -102,7 +104,10 @@ def check_token_security(chain: str, address: str) -> dict:
                     risk_level = risk.get("level", "")
                     
                     # Mark unsafe if LP is unlocked, single holder owns LP, metadata is mutable, or explicitly danger
-                    if risk_level == "danger" or any(x in risk_name for x in ["unlocked", "mutable", "single holder", "mintable"]):
+                    is_critical_risk = risk_level == "danger" or any(x in risk_name for x in ["unlocked", "mutable", "single holder", "mintable", "freeze"])
+                    is_new_token_risk = is_new_token and any(x in risk_name for x in ["bundled", "insider", "concentration", "copycat", "cabal", "large share", "suspicious"])
+                    
+                    if is_critical_risk or is_new_token_risk:
                         flags.append(f"RC_{risk.get('name', '').upper().replace(' ', '_')}")
                         is_safe = False
 
@@ -112,6 +117,10 @@ def check_token_security(chain: str, address: str) -> dict:
                     # ADVANCED AUDITS: Insider Wallet Accumulation & Cabals
                     # -------------------------------------------------------------
                     top_holders = data.get("topHolders", [])
+                    if isinstance(top_holders, list) and len(top_holders) == 0:
+                        flags.append("RC_HOLDERS_NOT_INDEXED")
+                        is_safe = False
+                        
                     insider_pct = 0.0
                     if isinstance(top_holders, list):
                         for h in top_holders:
@@ -208,7 +217,9 @@ def check_token_security(chain: str, address: str) -> dict:
         # Lapis 3: RugCheck Holder Concentration (NEW: Top-1 Holder Anti-Whale Check)
         try:
             holders_url = f"https://api.rugcheck.xyz/v1/tokens/{address}/holders"
-            rh = requests.get(holders_url, timeout=5)
+            rugcheck_key = os.getenv("RUGCHECK_API_KEY", "")
+            headers = {"X-API-KEY": rugcheck_key} if rugcheck_key else {}
+            rh = requests.get(holders_url, headers=headers, timeout=5)
             if rh.status_code == 200:
                 holders = rh.json()
                 if isinstance(holders, list) and holders:
@@ -485,7 +496,9 @@ def _fetch_candidates() -> list:
     # 1. Fetch ultra-fresh tokens from RugCheck
     new_tokens = []
     try:
-        r = requests.get('https://api.rugcheck.xyz/v1/stats/new_tokens', timeout=5)
+        rugcheck_key = os.getenv("RUGCHECK_API_KEY", "")
+        headers = {"X-API-KEY": rugcheck_key} if rugcheck_key else {}
+        r = requests.get('https://api.rugcheck.xyz/v1/stats/new_tokens', headers=headers, timeout=5)
         if r.status_code == 200:
             new_tokens = r.json()
     except Exception as e:
@@ -799,6 +812,10 @@ def scan_custom_token(chain: str, address: str) -> dict:
         # Get the primary pair (highest liquidity)
         pairs.sort(key=lambda x: float(x.get("liquidity", {}).get("usd", 0) or 0), reverse=True)
         p = pairs[0]
+        
+        # Skip tokens that are still on the Pump.fun bonding curve (very thin liquidity, high dump risk)
+        if p.get('dexId') == 'pumpfun':
+            return {"status": "error", "message": "Tokens still on Pump.fun bonding curve are excluded."}
         
         gem = {
             "chain": p.get("chainId", "").lower(),

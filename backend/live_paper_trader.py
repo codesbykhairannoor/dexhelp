@@ -118,6 +118,7 @@ def run_live_paper_trader():
     swap_fee_pct = 0.0025   # Raydium Standard Pool Fee is 0.25%
     slippage_pct = 0.005    # Actual slippage for $10 order in $20k pool is < 0.5%
     
+    last_scan_time = 0.0
     while True:
         try:
             print("\n" + "-" * 80)
@@ -229,15 +230,15 @@ def run_live_paper_trader():
                             pos["no_price_cycles"] = pos.get("no_price_cycles", 0) + 1
                             print(f"  [WARN] Harga {pos['symbol']} tidak tersedia (Cycle ke-{pos['no_price_cycles']}). Mengaktifkan Emergency SL...")
                             
-                            # EMERGENCY FORCE-CLOSE after 24 consecutive cycles with no price data (approx 2 minutes, likely rug/delisted)
-                            if pos.get("no_price_cycles", 0) >= 24:
+                            # EMERGENCY FORCE-CLOSE after 120 consecutive cycles with no price data (approx 2 minutes, likely rug/delisted)
+                            if pos.get("no_price_cycles", 0) >= 120:
                                 entry_price = pos["entry_price"]
                                 exit_price = entry_price * 0.50  # Assume worst case -50% for rugpull
                                 gross_inv = pos.get("gross_investment", pos["net_investment"])
                                 pnl_usd = (pos["qty"] * exit_price) - gross_inv
                                 realized_pnl_pct = (pnl_usd / gross_inv) * 100
                                 
-                                print(f"  [EMERGENCY EXIT] {pos['symbol']} tidak memiliki data harga 24 siklus berturut-turut. Kemungkinan RUGGED!")
+                                print(f"  [EMERGENCY EXIT] {pos['symbol']} tidak memiliki data harga 120 siklus berturut-turut. Kemungkinan RUGGED!")
                                 print(f"     => Harga Jual Estimasi: ${exit_price:.8f} | Realized PnL: {realized_pnl_pct:+.2f}% (${pnl_usd:+.2f})")
                                 
                                 portfolio.setdefault("cooldowns", {})[addr] = time.time() + 86400  # 24 hour cooldown for rugged tokens
@@ -437,7 +438,11 @@ def run_live_paper_trader():
             if len(active_positions) >= 10:
                 print(f"[SCAN] Limit 10 posisi aktif terisi ({len(active_positions)}/10). Mengabaikan scan koin baru.")
             else:
-                candidates = _fetch_candidates()
+                candidates = []
+                current_time = time.time()
+                if current_time - last_scan_time >= 15.0:
+                    last_scan_time = current_time
+                    candidates = _fetch_candidates()
                 if candidates:
                     candidates.sort(key=lambda x: x.get("volume_5m", 0), reverse=True)
                     
@@ -543,8 +548,8 @@ def run_live_paper_trader():
         except Exception as e:
             print(f"[ERROR] Loop error: {e}")
             
-        # High-frequency refresh every 5 seconds
-        time.sleep(5)
+        # High-frequency refresh every 1 second
+        time.sleep(1)
 
 if __name__ == "__main__":
     run_live_paper_trader()

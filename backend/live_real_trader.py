@@ -97,8 +97,9 @@ def run_live_real_trader():
     slippage_bps = int(os.getenv("SOLANA_SLIPPAGE_BPS", "250")) # 2.5% default slippage
     jito_tip_lamports = int(os.getenv("SOLANA_JITO_TIP", "1000000")) # 0.001 SOL Jito tip
     
-    # 3. High-Frequency Monitoring Loop (Every 5 seconds for real trades)
-    loop_delay = 5
+    # 3. High-Frequency Monitoring Loop (Every 1 second for real trades)
+    loop_delay = 1
+    last_scan_time = 0.0
     
     while True:
         try:
@@ -197,12 +198,12 @@ def run_live_real_trader():
                             pos["no_price_cycles"] = pos.get("no_price_cycles", 0) + 1
                             print(f"  [WARN] Harga {pos['symbol']} tidak tersedia (Cycle ke-{pos['no_price_cycles']}). Mengaktifkan Emergency SL...", flush=True)
                             
-                            # EMERGENCY FORCE-CLOSE after 24 consecutive cycles with no price data (approx 2 minutes, likely rug/delisted)
-                            if pos.get("no_price_cycles", 0) >= 24:
+                            # EMERGENCY FORCE-CLOSE after 120 consecutive cycles with no price data (approx 2 minutes, likely rug/delisted)
+                            if pos.get("no_price_cycles", 0) >= 120:
                                 entry_price = pos["entry_price"]
                                 exit_price = entry_price * 0.50  # Assume worst case -50% for rugpull
                                 
-                                print(f"\n🚨 [EMERGENCY EXIT] {pos['symbol']} tidak memiliki data harga 24 siklus. Kemungkinan RUGGED! Executing market sell...", flush=True)
+                                print(f"\n🚨 [EMERGENCY EXIT] {pos['symbol']} tidak memiliki data harga 120 siklus. Kemungkinan RUGGED! Executing market sell...", flush=True)
                                 
                                 raw_qty = int(pos["raw_qty"])
                                 
@@ -461,8 +462,11 @@ def run_live_real_trader():
             if len(portfolio["active_positions"]) >= 2:
                 print("[SCAN] Limit 2 active positions reached. Bypassing entry scanner.", flush=True)
             else:
-                # Limit is not reached, fetch live market candidates
-                candidates = _fetch_candidates()
+                candidates = []
+                current_time = time.time()
+                if current_time - last_scan_time >= 15.0:
+                    last_scan_time = current_time
+                    candidates = _fetch_candidates()
                 if candidates:
                     candidates.sort(key=lambda x: x.get("volume_5m", 0), reverse=True)
                     top_gems = candidates[:5]
