@@ -145,8 +145,8 @@ def check_token_security(chain: str, address: str) -> dict:
                 # ADVANCED AUDITS: Programmatic LP Lock/Burn Check (Primary Pool only)
                 # -------------------------------------------------------------
                 markets = data.get("markets", [])
+                primary_market = None
                 if isinstance(markets, list) and len(markets) > 0:
-                    primary_market = None
                     max_lp_usd = -1.0
                     for m in markets:
                         market_type = str(m.get("marketType", "")).lower()
@@ -168,6 +168,11 @@ def check_token_security(chain: str, address: str) -> dict:
                         if is_new_token and lp_locked_pct < 90.0 and lp_unlocked > 0:
                             flags.append(f"RC_UNLOCKED_LP_PRIMARY_{primary_market.get('marketType','').upper()} ({lp_locked_pct:.1f}% Locked)")
                             is_safe = False
+
+                # If it's a new token and we found no AMM market in RugCheck, block it (API lag bypass protection)
+                if is_new_token and not primary_market:
+                    flags.append("RC_NO_AMM_MARKET_FOUND")
+                    is_safe = False
             else:
                 flags.append(f"RUGCHECK_API_ERROR_STATUS_{r.status_code}")
                 is_safe = False
@@ -528,6 +533,10 @@ def _fetch_candidates() -> list:
                         
                     base_addr = pair.get('baseToken', {}).get('address')
                     if not base_addr or base_addr not in batch:
+                        continue
+                        
+                    # Skip tokens that are still on the Pump.fun bonding curve (very thin liquidity, high dump risk)
+                    if pair.get('dexId') == 'pumpfun':
                         continue
                         
                     liq = float(pair.get('liquidity', {}).get('usd', 0) or 0)
