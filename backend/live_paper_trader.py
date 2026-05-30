@@ -401,8 +401,8 @@ def run_live_paper_trader():
                                 sl_price = entry_price * 1.02  # Lock +2% profit when hit +20%
                                 trail_level = "BE-LOCK (+2%)"
                             else:
-                                sl_price = highest_price * 0.90  # Initial SL 10% from peak
-                                trail_level = "OPTIMIZED INITIAL SL (10%)"
+                                sl_price = entry_price * 0.75  # Fixed 25% Initial SL to prevent early stop-outs
+                                trail_level = "OPTIMIZED INITIAL SL (25%)"
                             
                         print(f"  [POSITION] {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | Puncak: ${highest_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}% | Guard: {trail_level}")
                         
