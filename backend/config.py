@@ -10,12 +10,12 @@
 #   MOONSHOT        (WR 50% PnL +26%)
 #   SCALPER         (WR 75% PnL +4.7%)
 #   HOLY_GRAIL_75WR (WR 75-80% PnL +15%) -> Mode agresif TP awal 50%
-TRADE_MODE = "HOLY_GRAIL_75WR"
+TRADE_MODE = "OPTIMIZED"
 
 # --- STRATEGY SCORING THRESHOLD ---
 # Skor minimal yang dikeluarkan oleh engine predator_score
-# BERSADARKAN HASIL SIMULASI: Diturunkan ke 80 agar bot rajin masuk trade.
-MIN_ENTRY_SCORE = 80
+# BERSADARKAN HASIL SIMULASI: Dinaikkan ke 90 untuk menyaring koin sampah/rugpull.
+MIN_ENTRY_SCORE = 90
 
 # --- DYNAMIC HIGH-FREQUENCY FILTERS (V26 OPTIMIZED) ---
 # Filter untuk mengambil koin baru di detik-detik awal peluncuran:

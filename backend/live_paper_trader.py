@@ -350,8 +350,8 @@ def run_live_paper_trader():
                                     sl_price = highest_price * 0.65
                                     trail_level = "ULTRA TSL 35%"
                                 else:
-                                    sl_price = entry_price * 1.02
-                                    trail_level = "ULTRA BE-LOCK (+2%)"
+                                    sl_price = entry_price * 1.05
+                                    trail_level = "ULTRA BE-LOCK (+5%)"
                             else:
                                 sl_price = entry_price * 0.80
                                 trail_level = "ULTRA INITIAL SL (20%)"
@@ -384,25 +384,51 @@ def run_live_paper_trader():
                                 sl_price = entry_price * 1.15
                                 trail_level = "STAGE 1 (+15% LOCK)"
                             elif price_gain_pct >= 15.0:
-                                sl_price = entry_price * 1.02
-                                trail_level = "BE-LOCK (+2%)"
+                                sl_price = entry_price * 1.05
+                                trail_level = "BE-LOCK (+5%)"
                             else:
                                 sl_price = highest_price * 0.80 # 20% Initial SL
                                 trail_level = "TRAILING SL (20%)"
-                        else:
-                            # OPTIMIZED HOLY GRAIL V15.0 (Score 75, SL 10%, BE 20% / Lock 2%) - RANK #1
-                            if price_gain_pct >= 150.0:
-                                sl_price = highest_price * 0.75  # Trail 25% from peak
-                                trail_level = "STAGE 3 (25% TSL)"
-                            elif price_gain_pct >= 60.0:
-                                sl_price = highest_price * 0.80  # Trail 20% from peak
-                                trail_level = "STAGE 2 (20% TSL)"
-                            elif price_gain_pct >= 20.0:
-                                sl_price = entry_price * 1.02  # Lock +2% profit when hit +20%
-                                trail_level = "BE-LOCK (+2%)"
+                            # OPTIMIZED HOLY GRAIL V17.0 (Scalp & Runner) - The True Holy Grail
+                            if not pos.get("partial_tp_hit", False) and price_gain_pct >= 30.0:
+                                partial_qty = pos["qty"] * 0.80
+                                partial_val = partial_qty * current_price
+                                portfolio["wallet_balance"] += partial_val
+                                print(f"\n✨ [SCALP TP] Jual 80% {pos['symbol']} @ ${current_price:.8f} (+{price_gain_pct:.2f}%)! Mengunci Modal & Profit.", flush=True)
+                                
+                                orig_gross = pos.get("original_gross_investment", pos.get("gross_investment", pos["net_investment"]))
+                                partial_pnl = partial_val - (0.80 * orig_gross)
+                                pos["total_pnl_usd"] = pos.get("total_pnl_usd", 0.0) + partial_pnl
+                                
+                                pos["qty"] *= 0.20
+                                pos["partial_tp_hit"] = True
+                                pos["remaining_pct"] = 0.20
+                                if "gross_investment" in pos:
+                                    pos["gross_investment"] *= 0.20
+                                pos["net_investment"] *= 0.20
+                                closed_any = True
+                                
+                            if pos.get("partial_tp_hit", False):
+                                # 20% MOONSHOT RUNNER LOGIC (Free bag)
+                                if price_gain_pct >= 300.0:
+                                    sl_price = highest_price * 0.70
+                                    trail_level = "RUNNER TSL (30%)"
+                                elif price_gain_pct >= 150.0:
+                                    sl_price = highest_price * 0.80
+                                    trail_level = "RUNNER TSL (20%)"
+                                elif price_gain_pct >= 80.0:
+                                    sl_price = entry_price * 1.50
+                                    trail_level = "RUNNER LOCK (+50%)"
+                                else:
+                                    sl_price = entry_price * 1.03
+                                    trail_level = "RUNNER BE-LOCK (+3%)"
                             else:
-                                sl_price = entry_price * 0.75  # Fixed 25% Initial SL to prevent early stop-outs
-                                trail_level = "OPTIMIZED INITIAL SL (25%)"
+                                if price_gain_pct >= 10.0:
+                                    sl_price = entry_price * 1.03
+                                    trail_level = "BE-LOCK (+3%)"
+                                else:
+                                    sl_price = highest_price * 0.85
+                                    trail_level = "OPTIMIZED TIGHT SL (15%)"
                             
                         print(f"  [POSITION] {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | Puncak: ${highest_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}% | Guard: {trail_level}")
                         

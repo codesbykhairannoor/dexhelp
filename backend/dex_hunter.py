@@ -462,18 +462,18 @@ def calculate_gem_score(pair_data: dict, security: dict) -> int:
     p5m = float(pair_data.get("price_change_5m", 0) or 0)
     p1h = float(pair_data.get("price_change_1h", 0) or 0)
     
-    # A. FOMO Shield: Anti-Overbought / Anti-Top Buying (V15.0 strict limit)
-    # Reject entry if 5m price change > 45% or 1h price change > 150%
-    if p5m > 45.0 or p1h > 150.0:
-        score -= 45 # Highly overbought! Deduct heavily to prevent top-buying
+    # A. FOMO Shield: Anti-Overbought / Anti-Top Buying (V17.0 strict limit)
+    # Reject entry if 5m price change > 40% or 1h price change > 150%
+    if p5m > 40.0 or p1h > 150.0:
+        score -= 100 # Highly overbought! Instant reject based on Unbiased Backtest data.
     
     # B. Consolidation Support Finder / Early Momentum (Optimal entry timing)
     elif 5.0 <= p5m <= 40.0 and p1h <= 100.0:
         score += 15 # Healthy early surge / consolidation entry
         
-    # C. Severe Dump Protection (Falling knife safety)
-    elif p5m < -25.0:
-        score -= 30 # Avoid falling knife dump tokens
+    # C. Severe Dump Protection (Falling knife safety based on true backtest anomaly)
+    elif p5m < -2.0:
+        score -= 50 # Avoid falling knife dump tokens. Real data shows dropping 2% in 5m leads to a severe dump.
 
     # 8. DexScreener Verified Paid Orders Bonus (V6 Premium legitimacy Check)
     if pair_data.get("has_paid_order"):
@@ -561,7 +561,7 @@ def _fetch_candidates() -> list:
                     buys = int(pair.get('txns', {}).get('m5', {}).get('buys', 0) or 0)
                     sells = int(pair.get('txns', {}).get('m5', {}).get('sells', 0) or 0)
                     trade5m = buys + sells
-                    symbol = pair.get('baseToken', {}).get('symbol', 'UNKNOWN')
+                    symbol = str(pair.get('baseToken', {}).get('symbol', 'UNKNOWN')).encode('ascii', errors='replace').decode('ascii')
                     mcap = float(pair.get('marketCap', 0) or pair.get('fdv', 0) or 0)
                     
                     print(f"  [AUDIT] {symbol} | Liq: ${liq:.0f} | Vol5m: ${v5m:.0f} | Trades: {trade5m} | Buys/Sells: {buys}/{sells}")
@@ -592,11 +592,18 @@ def _fetch_candidates() -> list:
                             
                         # Strong buying pressure (Buy Ratio > 2.0)
                         if buys >= 15 and buys > (sells * 2.0):
+                            pair_created_at = pair.get('pairCreatedAt', 0)
+                            if pair_created_at > 0:
+                                age_estimate_sec = max(0.0, (time.time() * 1000.0 - pair_created_at) / 1000.0)
+                            else:
+                                age_estimate_sec = 3600.0
+                            zero_minute_snipe = age_estimate_sec < 300.0
+
                             candidates[mint] = {
                                 "chain": "solana",
                                 "pair_address": pair.get('pairAddress'),
                                 "symbol": symbol,
-                                "name": pair.get('baseToken', {}).get('name', 'UNKNOWN'),
+                                "name": str(pair.get('baseToken', {}).get('name', 'UNKNOWN')).encode('ascii', errors='replace').decode('ascii'),
                                 "address": mint,
                                 "price": float(pair.get('priceUsd', 0) or 0),
                                 "volume_5m": v5m,
@@ -612,8 +619,8 @@ def _fetch_candidates() -> list:
                                 "url": pair.get('url', f"https://dexscreener.com/solana/{mint}"),
                                 "boost_amount": 0,
                                 "boosts_active": 0,
-                                "age_estimate_sec": 60,
-                                "zero_minute_snipe": True
+                                "age_estimate_sec": age_estimate_sec,
+                                "zero_minute_snipe": zero_minute_snipe
                             }
                         else:
                             print(f"    -> [DITOLAK] Rasio Pembeli Lemah (Syarat: Buys > Sells * 2 & Minimal 15 Buys).")
@@ -816,10 +823,17 @@ def scan_custom_token(chain: str, address: str) -> dict:
         if p.get('dexId') == 'pumpfun':
             return {"status": "error", "message": "Tokens still on Pump.fun bonding curve are excluded."}
         
+        pair_created_at = p.get('pairCreatedAt', 0)
+        if pair_created_at > 0:
+            age_estimate_sec = max(0.0, (time.time() * 1000.0 - pair_created_at) / 1000.0)
+        else:
+            age_estimate_sec = 3600.0
+        zero_minute_snipe = age_estimate_sec < 300.0
+
         gem = {
             "chain": p.get("chainId", "").lower(),
-            "symbol": p.get("baseToken", {}).get("symbol", "UNKNOWN"),
-            "name": p.get("baseToken", {}).get("name", "UNKNOWN"),
+            "symbol": str(p.get("baseToken", {}).get("symbol", "UNKNOWN")).encode('ascii', errors='replace').decode('ascii'),
+            "name": str(p.get("baseToken", {}).get("name", "UNKNOWN")).encode('ascii', errors='replace').decode('ascii'),
             "address": address,
             "price": float(p.get("priceUsd", 0) or 0),
             "volume_5m": float(p.get("volume", {}).get("m5", 0) or 0),
@@ -829,7 +843,9 @@ def scan_custom_token(chain: str, address: str) -> dict:
             "price_change_5m": float(p.get("priceChange", {}).get("m5", 0) or 0),
             "price_change_1h": float(p.get("priceChange", {}).get("h1", 0) or 0),
             "txns": p.get("txns", {}),
-            "info": p.get("info", {})
+            "info": p.get("info", {}),
+            "age_estimate_sec": age_estimate_sec,
+            "zero_minute_snipe": zero_minute_snipe
         }
         
         # 2. Live Security Audit

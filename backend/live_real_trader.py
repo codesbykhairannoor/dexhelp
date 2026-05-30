@@ -369,8 +369,8 @@ def run_live_real_trader():
                                     sl_price = highest_price * 0.65
                                     trail_level = "ULTRA TSL 35%"
                                 else:
-                                    sl_price = entry_price * 1.02
-                                    trail_level = "ULTRA BE-LOCK (+2%)"
+                                    sl_price = entry_price * 1.05
+                                    trail_level = "ULTRA BE-LOCK (+5%)"
                             else:
                                 sl_price = entry_price * 0.80
                                 trail_level = "ULTRA INITIAL SL (20%)"
@@ -403,25 +403,66 @@ def run_live_real_trader():
                                 sl_price = entry_price * 1.15
                                 trail_level = "STAGE 1 (+15% LOCK)"
                             elif price_gain_pct >= 15.0:
-                                sl_price = entry_price * 1.02
-                                trail_level = "BE-LOCK (+2%)"
+                                sl_price = entry_price * 1.05
+                                trail_level = "BE-LOCK (+5%)"
                             else:
                                 sl_price = highest_price * 0.80 # 20% Initial SL
                                 trail_level = "TRAILING SL (20%)"
-                        else:
-                            # OPTIMIZED HOLY GRAIL V15.0 (Score 75, SL 10%, BE 20% / Lock 2%) - RANK #1
-                            if price_gain_pct >= 150.0:
-                                sl_price = highest_price * 0.75  # Trail 25% from peak
-                                trail_level = "STAGE 3 (25% TSL)"
-                            elif price_gain_pct >= 60.0:
-                                sl_price = highest_price * 0.80  # Trail 20% from peak
-                                trail_level = "STAGE 2 (20% TSL)"
-                            elif price_gain_pct >= 20.0:
-                                sl_price = entry_price * 1.02  # Lock +2% profit when hit +20%
-                                trail_level = "BE-LOCK (+2%)"
+                            # OPTIMIZED HOLY GRAIL V17.0 (Scalp & Runner) - The True Holy Grail
+                            if not pos.get("partial_tp_hit", False) and price_gain_pct >= 30.0:
+                                raw_qty = int(pos["raw_qty"])
+                                partial_raw_qty = int(raw_qty * 0.80)
+                                
+                                print(f"\n✨ [SCALP TP TRIGGERED] Jual 80% {pos['symbol']} @ ${current_price:.8f} (+{price_gain_pct:.2f}%)! Mengamankan Profit via On-Chain Swap...", flush=True)
+                                
+                                sell_res = execute_solana_swap(
+                                    input_mint=addr,
+                                    output_mint="So11111111111111111111111111111111111111112",
+                                    amount_lamports=partial_raw_qty,
+                                    slippage_bps=slippage_bps,
+                                    jito_tip_lamports=jito_tip_lamports
+                                )
+                                
+                                if sell_res.get("status") == "success":
+                                    sol_received = float(sell_res["net_out_amount"]) / 1_000_000_000.0
+                                    print(f"✨ [REAL SCALP TP CONFIRMED] Successfully sold 80% of {pos['symbol']}!", flush=True)
+                                    print(f"   => SOL Received: {sol_received:.6f} SOL", flush=True)
+                                    print(f"   => Tx Signature: {sell_res['explorer_url']}", flush=True)
+                                    
+                                    orig_inv = pos.get("original_investment_sol", pos["net_investment_sol"])
+                                    partial_pnl = sol_received - (0.80 * orig_inv)
+                                    pos["total_pnl_sol"] = pos.get("total_pnl_sol", 0.0) + partial_pnl
+                                    
+                                    pos["raw_qty"] = str(raw_qty - partial_raw_qty)
+                                    pos["qty"] *= 0.20
+                                    pos["partial_tp_hit"] = True
+                                    pos["remaining_pct"] = 0.20
+                                    pos["net_investment_sol"] *= 0.20
+                                    closed_any = True
+                                else:
+                                    print(f"[ERROR] Failed to execute scalp TP sell transaction: {sell_res.get('message')}", flush=True)
+                                
+                            if pos.get("partial_tp_hit", False):
+                                # 20% MOONSHOT RUNNER LOGIC (Free bag)
+                                if price_gain_pct >= 300.0:
+                                    sl_price = highest_price * 0.70
+                                    trail_level = "RUNNER TSL (30%)"
+                                elif price_gain_pct >= 150.0:
+                                    sl_price = highest_price * 0.80
+                                    trail_level = "RUNNER TSL (20%)"
+                                elif price_gain_pct >= 80.0:
+                                    sl_price = entry_price * 1.50
+                                    trail_level = "RUNNER LOCK (+50%)"
+                                else:
+                                    sl_price = entry_price * 1.03
+                                    trail_level = "RUNNER BE-LOCK (+3%)"
                             else:
-                                sl_price = entry_price * 0.75  # Fixed 25% Initial SL to prevent early stop-outs
-                                trail_level = "OPTIMIZED INITIAL SL (25%)"
+                                if price_gain_pct >= 10.0:
+                                    sl_price = entry_price * 1.03
+                                    trail_level = "BE-LOCK (+3%)"
+                                else:
+                                    sl_price = highest_price * 0.85
+                                    trail_level = "OPTIMIZED TIGHT SL (15%)"
                             
                         print(f"  [TRACKING] {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}% | Guard: {trail_level}", flush=True)
                         
