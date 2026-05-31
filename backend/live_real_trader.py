@@ -408,6 +408,7 @@ def run_live_real_trader():
                             else:
                                 sl_price = highest_price * 0.80 # 20% Initial SL
                                 trail_level = "TRAILING SL (20%)"
+                        elif trade_mode == "OPTIMIZED":
                             # OPTIMIZED HOLY GRAIL V17.0 (Scalp & Runner) - The True Holy Grail
                             if not pos.get("partial_tp_hit", False) and price_gain_pct >= 30.0:
                                 raw_qty = int(pos["raw_qty"])
