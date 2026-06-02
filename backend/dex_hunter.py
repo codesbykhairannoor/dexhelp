@@ -570,7 +570,7 @@ def _fetch_candidates() -> list:
                     # All parameters are now loaded from config.py instead of .env
                     from config import MIN_LIQ, MAX_LIQ, MIN_MCAP, REQUIRE_SOCIALS, MIN_VOL_5M, MIN_TRADES_5M
                     min_liq = MIN_LIQ
-                    max_liq = getattr(sys.modules['config'], 'MAX_LIQ', 500000) # Get attr safely or default to 500k
+                    max_liq = MAX_LIQ
                     min_mcap = MIN_MCAP
                     req_socials = REQUIRE_SOCIALS
                     min_vol = MIN_VOL_5M
