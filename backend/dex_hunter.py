@@ -316,7 +316,7 @@ def check_token_security(chain: str, address: str) -> dict:
         score_impact += 25
     elif is_safe:
         status = "WARNINGS"
-        score_impact += 5
+        score_impact -= 15 # V18.0 Sniper Mode: Deduct points for warnings
     else:
         status = "DANGEROUS SCAM"
         score_impact -= 40
