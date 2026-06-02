@@ -568,8 +568,9 @@ def _fetch_candidates() -> list:
                     
                     # V25.0 DYNAMIC CONFIGURATOR FILTERS
                     # All parameters are now loaded from config.py instead of .env
-                    from config import MIN_LIQ, MIN_MCAP, REQUIRE_SOCIALS, MIN_VOL_5M, MIN_TRADES_5M
+                    from config import MIN_LIQ, MAX_LIQ, MIN_MCAP, REQUIRE_SOCIALS, MIN_VOL_5M, MIN_TRADES_5M
                     min_liq = MIN_LIQ
+                    max_liq = getattr(sys.modules['config'], 'MAX_LIQ', 500000) # Get attr safely or default to 500k
                     min_mcap = MIN_MCAP
                     req_socials = REQUIRE_SOCIALS
                     min_vol = MIN_VOL_5M
@@ -578,6 +579,11 @@ def _fetch_candidates() -> list:
                     # Bypass DexScreener $0 delay if volume is huge
                     if liq >= min_liq or (liq == 0 and (mcap >= min_mcap or v5m >= min_vol)):
                         
+                        # V18.1 Goldilocks Filter: Reject Giant Coins
+                        if liq > max_liq:
+                            print(f"    -> [DITOLAK] Likuiditas terlalu besar (${liq:.0f}). Koin raksasa lamban.")
+                            continue
+                            
                         # Require Social Presence
                         info = pair.get("info", {})
                         has_social = bool(info.get("websites") or info.get("socials"))

@@ -14,16 +14,17 @@ TRADE_MODE = "OPTIMIZED"
 
 # --- STRATEGY SCORING THRESHOLD ---
 # Skor minimal yang dikeluarkan oleh engine predator_score
-# BERSADARKAN HASIL SIMULASI: Dinaikkan ke 95 (Sniper Mode) untuk menyaring koin sampah/rugpull.
-MIN_ENTRY_SCORE = 95
+# BERSADARKAN HASIL SIMULASI: Dikembalikan ke 90 (Goldilocks Mode).
+MIN_ENTRY_SCORE = 90
 
 # --- DYNAMIC HIGH-FREQUENCY FILTERS (V26 OPTIMIZED) ---
 # Filter untuk mengambil koin baru di detik-detik awal peluncuran:
-MIN_LIQ = 10000       # Likuiditas minimal USD (Dinaikkan agar tidak kena slippage parah)
+MIN_LIQ = 5000        # Likuiditas minimal USD (Anti-Slippage)
+MAX_LIQ = 500000      # Likuiditas maksimal USD (Anti-Koin Raksasa/Lamban)
 MIN_MCAP = 5000       # Market Cap minimal USD
-MIN_VOL_5M = 25000    # Volume transaksi 5 menit minimal USD (Wajib sangat tinggi!)
+MIN_VOL_5M = 15000    # Volume transaksi 5 menit minimal USD (Wajib sangat tinggi!)
 MIN_TRADES_5M = 50    # Jumlah transaksi total 5 menit minimal (Buy + Sell)
 
 # Apakah wajib ada link Twitter/Website/Telegram di DexScreener?
-# BERSADARKAN HASIL SIMULASI: TRUE (90% koin tanpa sosial adalah Rugpull developer malas)
-REQUIRE_SOCIALS = True
+# BERSADARKAN HASIL SIMULASI: FALSE (Karena 80% koin pemenang awal tidak memiliki link sosial!)
+REQUIRE_SOCIALS = False
