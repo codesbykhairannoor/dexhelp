@@ -494,32 +494,31 @@ def _fetch_candidates() -> list:
     """V16.5 BIRDEYE ZERO-MINUTE HUNTER: Fetch ultra-fresh tokens from RugCheck and verify on Birdeye"""
     candidates = {}
     
-    # 1. Fetch active trending tokens from DexScreener (Profiles & Boosts)
+    # 1. THE TRUE ZERO-MINUTE SNIPER (RugCheck new_tokens API)
+    # Fetch literally newly minted Solana tokens in real-time
     mints = []
     try:
-        # Get recently updated profiles (active devs)
-        r_prof = requests.get('https://api.dexscreener.com/token-profiles/latest/v1', timeout=5)
-        if r_prof.status_code == 200:
-            for t in r_prof.json():
-                if t.get('chainId') == 'solana' and t.get('tokenAddress'):
-                    mints.append(t.get('tokenAddress'))
+        r_new = requests.get('https://api.rugcheck.xyz/v1/stats/new_tokens', timeout=5)
+        if r_new.status_code == 200:
+            for t in r_new.json():
+                if t.get('mint'):
+                    mints.append(t.get('mint'))
                     
-        # Get top boosted tokens (high visibility)
-        r_boost = requests.get('https://api.dexscreener.com/token-boosts/top/v1', timeout=5)
-        if r_boost.status_code == 200:
-            for t in r_boost.json():
-                if t.get('chainId') == 'solana' and t.get('tokenAddress'):
-                    mints.append(t.get('tokenAddress'))
-                    
-        # Remove duplicates
-        mints = list(set(mints))
+        # Remove duplicates while preserving order (newest first)
+        seen = set()
+        mints_unique = []
+        for m in mints:
+            if m not in seen:
+                mints_unique.append(m)
+                seen.add(m)
+        mints = mints_unique
         
-        # Limit to 60 tokens for performance
-        if len(mints) > 60:
-            mints = mints[:60]
+        # Limit to 30 tokens for ultra-fast sniping
+        if len(mints) > 30:
+            mints = mints[:30]
             
     except Exception as e:
-        print(f"[DEX HUNTER] Gagal mengambil token aktif dari DexScreener: {e}")
+        print(f"[DEX HUNTER] Gagal mengambil token baru dari RugCheck: {e}")
         
     if not mints:
         return []
@@ -569,14 +568,22 @@ def _fetch_candidates() -> list:
                     
                     # V25.0 DYNAMIC CONFIGURATOR FILTERS
                     # All parameters are now loaded from config.py instead of .env
-                    from config import MIN_LIQ, MAX_LIQ, MIN_MCAP, REQUIRE_SOCIALS, MIN_VOL_5M, MIN_TRADES_5M
+                    from config import MIN_LIQ, MAX_LIQ, MIN_MCAP, REQUIRE_SOCIALS, MIN_VOL_5M, MIN_TRADES_5M, MAX_AGE_MINUTES
                     min_liq = MIN_LIQ
                     max_liq = MAX_LIQ
                     min_mcap = MIN_MCAP
                     req_socials = REQUIRE_SOCIALS
                     min_vol = MIN_VOL_5M
                     min_trades = MIN_TRADES_5M
+                    max_age_minutes = MAX_AGE_MINUTES
                     
+                    # [PHASE 6] THE ABSOLUTE AGE GUARD
+                    pair_created_at = pair.get('pairCreatedAt', 0)
+                    age_estimate_sec = max(0.0, (time.time() * 1000.0 - pair_created_at) / 1000.0) if pair_created_at > 0 else 3600.0
+                    if age_estimate_sec > max_age_minutes * 60:
+                        print(f"    -> [DITOLAK] Umur Koin > {max_age_minutes} Menit ({age_estimate_sec/60:.1f} Menit). Terlalu Tua!")
+                        continue
+                        
                     # Bypass DexScreener $0 delay if volume is huge
                     if liq >= min_liq or (liq == 0 and (mcap >= min_mcap or v5m >= min_vol)):
                         
