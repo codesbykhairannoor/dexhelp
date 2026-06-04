@@ -176,7 +176,8 @@ def check_token_security(chain: str, address: str) -> dict:
                         # If it is a mature token, we skip unlocked LP check as other users create unlocked pools
                         if is_new_token and lp_locked_pct < 90.0 and lp_unlocked > 0:
                             flags.append(f"RC_UNLOCKED_LP_PRIMARY_{primary_market.get('marketType','').upper()} ({lp_locked_pct:.1f}% Locked)")
-                            is_safe = False
+                            # DO NOT set is_safe = False because LP locks take time to index on RugCheck
+                            score_impact -= 10
 
                 # If it's a new token and we found no AMM market in RugCheck, block it (API lag bypass protection)
                 if is_new_token and not primary_market:
