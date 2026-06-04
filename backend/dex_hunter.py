@@ -549,8 +549,9 @@ def _fetch_candidates() -> list:
                         continue
                         
                     # Skip tokens that are still on the Pump.fun bonding curve (very thin liquidity, high dump risk)
-                    if pair.get('dexId') == 'pumpfun':
-                        continue
+                    # [PHASE 6 HOTFIX] We MUST allow pumpfun, because 100% of 0-minute tokens start here!
+                    # if pair.get('dexId') == 'pumpfun':
+                    #     continue
                         
                     liq = float(pair.get('liquidity', {}).get('usd', 0) or 0)
                     if base_addr not in best_pairs or liq > float(best_pairs[base_addr].get('liquidity', {}).get('usd', 0) or 0):
