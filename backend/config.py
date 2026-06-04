@@ -24,8 +24,8 @@ MAX_AGE_MINUTES = 10  # [SUPER SNIPER] Batas absolut umur koin maksimal (menit)
 MIN_LIQ = 2000        # Likuiditas minimal USD (Anti-Slippage)
 MAX_LIQ = 500000      # Likuiditas maksimal USD (Anti-Koin Raksasa/Lamban)
 MIN_MCAP = 2000       # Market Cap minimal USD
-MIN_VOL_5M = 15000    # Volume transaksi 5 menit minimal USD (Wajib sangat tinggi!)
-MIN_TRADES_5M = 50    # Jumlah transaksi total 5 menit minimal (Buy + Sell)
+MIN_VOL_5M = 1500     # Volume transaksi 5 menit minimal USD (Koin bayi tidak butuh 15k vol)
+MIN_TRADES_5M = 20    # Jumlah transaksi total 5 menit minimal (Buy + Sell)
 
 # Apakah wajib ada link Twitter/Website/Telegram di DexScreener?
 # BERSADARKAN HASIL SIMULASI: FALSE (Karena 80% koin pemenang awal tidak memiliki link sosial!)
