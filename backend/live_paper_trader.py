@@ -88,6 +88,7 @@ def save_portfolio(portfolio: dict):
         print(f"[ERROR] Gagal menyimpan portofolio: {e}")
 
 def run_live_paper_trader():
+    import time
     if "--reset" in sys.argv:
         default_portfolio = {
             "wallet_balance": 1000.00,
