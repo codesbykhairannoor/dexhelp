@@ -433,8 +433,22 @@ def run_live_paper_trader():
                             
                         print(f"  [POSITION] {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | Puncak: ${highest_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}% | Guard: {trail_level}")
                         
-                        # Trigger exit ONLY when current price falls below dynamic trailing SL
-                        if current_price <= sl_price:
+                        # [HOTFIX] Time-Based Dead Token Exit (Max hold 25 minutes without taking profit)
+                        import time
+                        time_based_sl_triggered = False
+                        entry_time_str = pos.get("entry_time")
+                        if entry_time_str:
+                            try:
+                                entry_ts = time.mktime(time.strptime(entry_time_str, '%Y-%m-%d %H:%M:%S'))
+                                elapsed_mins = (time.time() - entry_ts) / 60.0
+                                if elapsed_mins >= 25.0 and not pos.get("partial_tp_hit", False):
+                                    time_based_sl_triggered = True
+                                    trail_level = "DEAD TOKEN TIMEOUT (25m)"
+                            except Exception:
+                                pass
+                        
+                        # Trigger exit ONLY when current price falls below dynamic trailing SL or time limit is reached
+                        if current_price <= sl_price or time_based_sl_triggered:
                             exit_price = current_price
                             net_exit_value = pos["qty"] * exit_price
                             
