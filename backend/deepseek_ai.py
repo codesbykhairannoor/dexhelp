@@ -4,7 +4,8 @@ def get_api_key():
     key = os.getenv("DEEPSEEK_API_KEY")
     if key: return key
     
-    env_path = os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.env'))
+    # Bot expects .env to be in the backend/ folder
+    env_path = os.path.join(os.path.dirname(__file__), ".env")
     if os.path.exists(env_path):
         with open(env_path, 'r') as f:
             for line in f:
