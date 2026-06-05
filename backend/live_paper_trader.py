@@ -466,7 +466,6 @@ def run_live_paper_trader():
                         print(f"  [POSITION] {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | Puncak: ${highest_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}% | Guard: {trail_level}")
                         
                         # [HOTFIX] Time-Based Dead Token Exit (Max hold 25 minutes without taking profit)
-                        import time
                         time_based_sl_triggered = False
                         entry_time_str = pos.get("entry_time")
                         if entry_time_str:
