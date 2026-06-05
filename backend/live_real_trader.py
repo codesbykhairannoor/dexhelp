@@ -590,6 +590,23 @@ def run_live_real_trader():
                         from config import MIN_ENTRY_SCORE
                         min_entry_score = MIN_ENTRY_SCORE
                         if security["status"] in ["CLEAN & SAFE", "WARNINGS"] and score >= min_entry_score:
+                            # --- DEEPSEEK MEMETIC AI FILTER (Final Boss) ---
+                            try:
+                                from deepseek_ai import evaluate_token
+                                print(f"  [AI] Mengirim {gem['symbol']} ke DeepSeek untuk diuji Vibe/Memetic...")
+                                memetic_res = evaluate_token(gem['symbol'], gem['name'])
+                                if "error" in memetic_res:
+                                    print(f"    -> [AI ERROR] Gagal menghubungi DeepSeek. Skip filter memetic. Error: {memetic_res['error']}")
+                                else:
+                                    memetic_score = memetic_res.get("score", 0)
+                                    reason = memetic_res.get("reason", "")
+                                    print(f"    -> [DEEPSEEK] Memetic Score: {memetic_score}/100 | {reason}")
+                                    if memetic_score < 40:
+                                        print(f"    -> [DITOLAK] Memetic AI Score terlalu rendah (<40). Potensi viral kecil.")
+                                        continue
+                            except Exception as e:
+                                print(f"    -> [AI ERROR] DeepSeek tidak tersedia: {e}")
+                                
                             if score > best_score:
                                 best_score = score
                                 best_candidate = gem
