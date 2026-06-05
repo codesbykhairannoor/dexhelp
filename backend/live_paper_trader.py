@@ -598,8 +598,8 @@ def run_live_paper_trader():
                                     memetic_score = memetic_res.get("score", 0)
                                     reason = memetic_res.get("reason", "")
                                     print(f"    -> [DEEPSEEK] Memetic Score: {memetic_score}/100 | {reason}")
-                                    if memetic_score < 40:
-                                        print(f"    -> [DITOLAK] Memetic AI Score terlalu rendah (<40). Potensi viral kecil.")
+                                    if memetic_score < 60:
+                                        print(f"    -> [DITOLAK] Memetic AI Score terlalu rendah (<60). Potensi viral kecil.")
                                         continue
                             except Exception as e:
                                 print(f"    -> [AI ERROR] DeepSeek tidak tersedia: {e}")
