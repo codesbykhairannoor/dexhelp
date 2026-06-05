@@ -430,6 +430,38 @@ def run_live_paper_trader():
                                 else:
                                     sl_price = highest_price * 0.85
                                     trail_level = "OPTIMIZED TIGHT SL (15%)"
+                        elif trade_mode == "RUNNER":
+                            if not pos.get("partial_tp_hit", False) and price_gain_pct >= 30.0:
+                                partial_qty = pos["qty"] * 0.50
+                                partial_val = partial_qty * current_price
+                                portfolio["wallet_balance"] += partial_val
+                                print(f"\n✨ [RUNNER TP] Mengamankan 50% Profit {pos['symbol']} @ ${current_price:.8f} (+{price_gain_pct:.2f}%)!", flush=True)
+                                
+                                orig_gross = pos.get("original_gross_investment", pos.get("gross_investment", pos["net_investment"]))
+                                partial_pnl = partial_val - (0.50 * orig_gross)
+                                pos["total_pnl_usd"] = pos.get("total_pnl_usd", 0.0) + partial_pnl
+                                
+                                pos["qty"] *= 0.50
+                                pos["partial_tp_hit"] = True
+                                pos["remaining_pct"] = 0.50
+                                if "gross_investment" in pos:
+                                    pos["gross_investment"] *= 0.50
+                                pos["net_investment"] *= 0.50
+                                closed_any = True
+                                
+                            if pos.get("partial_tp_hit", False):
+                                if price_gain_pct >= 200.0:
+                                    sl_price = highest_price * 0.70
+                                    trail_level = "RUNNER TSL (30%)"
+                                else:
+                                    sl_price = entry_price * 1.05
+                                    trail_level = "RUNNER BE-LOCK (+5%)"
+                            else:
+                                sl_price = highest_price * 0.80
+                                trail_level = "RUNNER INITIAL SL (20%)"
+                        else:
+                            sl_price = highest_price * 0.80
+                            trail_level = "DEFAULT SL (20%)"
                             
                         print(f"  [POSITION] {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | Puncak: ${highest_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}% | Guard: {trail_level}")
                         
