@@ -6,12 +6,13 @@
 
 # --- PRODUCTION TRADING MODES ---
 # Pilihan: 
+#   HIT_AND_RUN     (Konsisten Cuan Harian: Langsung TP 100% di +20%, tidak rakus)
 #   RUNNER          (Murni Sniper: TP 50% di +30%, sisa dibiarkan Moonshot)
 #   OPTIMIZED       (WR 57% PnL +18%)
 #   MOONSHOT        (WR 50% PnL +26%)
 #   SCALPER         (WR 75% PnL +4.7%)
 #   HOLY_GRAIL_75WR (WR 75-80% PnL +15%) -> Mode agresif TP awal 50%
-TRADE_MODE = "RUNNER"
+TRADE_MODE = "HIT_AND_RUN"
 
 # --- STRATEGY SCORING THRESHOLD ---
 # Skor minimal yang dikeluarkan oleh engine predator_score

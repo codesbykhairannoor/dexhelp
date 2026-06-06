@@ -431,6 +431,16 @@ def run_live_paper_trader():
                                 else:
                                     sl_price = highest_price * 0.85
                                     trail_level = "OPTIMIZED TIGHT SL (15%)"
+                        elif trade_mode == "HIT_AND_RUN":
+                            if price_gain_pct >= 20.0:
+                                sl_price = current_price * 1.5 # Paksa jual instan 100% sekarang juga
+                                trail_level = "HIT & RUN (+20% TP MUTLAK)"
+                            elif price_gain_pct >= 10.0:
+                                sl_price = entry_price * 1.02
+                                trail_level = "HIT & RUN BE-LOCK (+2%)"
+                            else:
+                                sl_price = highest_price * 0.85
+                                trail_level = "HIT & RUN INITIAL SL (15%)"
                         elif trade_mode == "RUNNER":
                             if not pos.get("partial_tp_hit", False) and price_gain_pct >= 30.0:
                                 partial_qty = pos["qty"] * 0.50

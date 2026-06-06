@@ -464,6 +464,67 @@ def run_live_real_trader():
                                 else:
                                     sl_price = highest_price * 0.85
                                     trail_level = "OPTIMIZED TIGHT SL (15%)"
+                        elif trade_mode == "HIT_AND_RUN":
+                            if price_gain_pct >= 20.0:
+                                sl_price = current_price * 1.5 # Paksa jual instan 100% sekarang juga
+                                trail_level = "HIT & RUN (+20% TP MUTLAK)"
+                            elif price_gain_pct >= 10.0:
+                                sl_price = entry_price * 1.02
+                                trail_level = "HIT & RUN BE-LOCK (+2%)"
+                            else:
+                                sl_price = highest_price * 0.85
+                                trail_level = "HIT & RUN INITIAL SL (15%)"
+                        elif trade_mode == "RUNNER":
+                            if not pos.get("partial_tp_hit", False) and price_gain_pct >= 30.0:
+                                raw_qty = int(pos["raw_qty"])
+                                partial_raw_qty = int(raw_qty * 0.50)
+                                
+                                print(f"\n✨ [RUNNER TP TRIGGERED] Jual 50% {pos['symbol']} @ ${current_price:.8f} (+{price_gain_pct:.2f}%)! Mengamankan Profit via On-Chain Swap...", flush=True)
+                                
+                                sell_res = execute_solana_swap(
+                                    input_mint=addr,
+                                    output_mint="So11111111111111111111111111111111111111112",
+                                    amount_lamports=partial_raw_qty,
+                                    slippage_bps=slippage_bps,
+                                    jito_tip_lamports=jito_tip_lamports
+                                )
+                                
+                                if sell_res.get("status") == "success":
+                                    sol_received = float(sell_res["net_out_amount"]) / 1_000_000_000.0
+                                    print(f"✨ [REAL RUNNER TP CONFIRMED] Successfully sold 50% of {pos['symbol']}!", flush=True)
+                                    print(f"   => SOL Received: {sol_received:.6f} SOL", flush=True)
+                                    
+                                    pos["raw_qty"] = str(raw_qty - partial_raw_qty)
+                                    pos["qty"] *= 0.50
+                                    pos["partial_tp_hit"] = True
+                                    pos["remaining_pct"] = 0.50
+                                    if "gross_investment_sol" in pos:
+                                        pos["gross_investment_sol"] *= 0.50
+                                    pos["net_investment_sol"] *= 0.50
+                                    
+                                    orig_inv = pos.get("original_investment_sol", pos.get("gross_investment_sol", pos["net_investment_sol"]))
+                                    partial_pnl = sol_received - (0.50 * orig_inv)
+                                    pos["total_pnl_sol"] = pos.get("total_pnl_sol", 0.0) + partial_pnl
+                                else:
+                                    print(f"❌ [SWAP FAILED] Gagal menjual 50% TP: {sell_res.get('message')}", flush=True)
+
+                            if pos.get("partial_tp_hit", False):
+                                if price_gain_pct >= 200.0:
+                                    sl_price = highest_price * 0.70
+                                    trail_level = "RUNNER TSL (30%)"
+                                elif price_gain_pct >= 50.0:
+                                    sl_price = highest_price * 0.80
+                                    trail_level = "RUNNER TSL (20%)"
+                                else:
+                                    sl_price = entry_price * 1.05
+                                    trail_level = "RUNNER BE-LOCK (+5%)"
+                            else:
+                                sl_price = highest_price * 0.80
+                                trail_level = "RUNNER INITIAL SL (20%)"
+                        else:
+                            sl_price = highest_price * 0.80
+                            trail_level = "DEFAULT SL (20%)"
+
                             
                         print(f"  [TRACKING] {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}% | Guard: {trail_level}", flush=True)
                         
