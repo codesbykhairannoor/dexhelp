@@ -661,9 +661,13 @@ def run_live_real_trader():
                                 else:
                                     memetic_score = memetic_res.get("score", 0)
                                     reason = memetic_res.get("reason", "")
+                                    deep_thoughts = memetic_res.get("deep_thoughts", "")
                                     print(f"    -> [DEEPSEEK] Memetic Score: {memetic_score}/100 | {reason}")
-                                    if memetic_score < 60:
-                                        print(f"    -> [DITOLAK] Memetic AI Score terlalu rendah (<60). Potensi viral kecil.")
+                                    if deep_thoughts:
+                                        print(f"    -> [THOUGHT] {deep_thoughts[:200]}...")
+                                        
+                                    if memetic_score < 80:
+                                        print(f"    -> [DITOLAK] Memetic AI Score terlalu rendah (<80). Potensi viral kecil / Jebakan Scammer.")
                                         continue
                             except Exception as e:
                                 print(f"    -> [AI ERROR] DeepSeek tidak tersedia: {e}")

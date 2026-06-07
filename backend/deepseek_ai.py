@@ -4,12 +4,21 @@ def get_api_key():
     key = os.getenv("DEEPSEEK_API_KEY")
     if key: return key
     
-    # Bot expects .env to be in the backend/ folder
+    # Check backend/.env first
     env_path = os.path.join(os.path.dirname(__file__), ".env")
     if os.path.exists(env_path):
         with open(env_path, 'r') as f:
             for line in f:
-                if 'DEEPSEEK_API_KEY' in line:
+                if 'DEEPSEEK_API_KEY' in line and not line.startswith('#'):
+                    val = line.split('=')[-1].strip().strip('"').strip("'")
+                    if val: return val
+                    
+    # Check parent directory ../.env
+    root_env = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".env")
+    if os.path.exists(root_env):
+        with open(root_env, 'r') as f:
+            for line in f:
+                if 'DEEPSEEK_API_KEY' in line and not line.startswith('#'):
                     return line.split('=')[-1].strip().strip('"').strip("'")
     return None
 
@@ -37,25 +46,36 @@ Format: {{"score": <1-100 integer>, "reason": "<brief 1 sentence reason>"}}
     }
     
     payload = {
-        "model": "deepseek-chat",
+        "model": "deepseek-v4-pro",
         "messages": [
             {"role": "system", "content": "You are a hyper-intelligent degen memecoin sniper algorithm."},
             {"role": "user", "content": prompt}
         ],
+        "thinking": {"type": "enabled"},
+        "reasoning_effort": "high",
         "response_format": {"type": "json_object"},
         "stream": False
     }
     
     try:
-        r = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=3)
+        # Increase timeout because thinking takes longer
+        r = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=20)
         latency = time.time() - start_time
         
         if r.status_code == 200:
             res = r.json()
-            content = res["choices"][0]["message"]["content"]
+            message = res["choices"][0]["message"]
+            content = message.get("content", "")
+            reasoning = message.get("reasoning_content", "") # This captures the "Chain of Thought"
+            
             try:
                 parsed = json.loads(content)
-                return {"latency_sec": latency, "score": parsed.get("score"), "reason": parsed.get("reason")}
+                return {
+                    "latency_sec": latency, 
+                    "score": parsed.get("score", 0), 
+                    "reason": parsed.get("reason", ""),
+                    "deep_thoughts": reasoning
+                }
             except Exception as e:
                 return {"latency_sec": latency, "error": f"Parse Error: {content}"}
         else:
