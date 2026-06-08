@@ -658,6 +658,7 @@ def run_live_real_trader():
                                 memetic_res = evaluate_token(gem['symbol'], gem['name'])
                                 if "error" in memetic_res:
                                     print(f"    -> [AI ERROR] Gagal menghubungi DeepSeek. Skip filter memetic. Error: {memetic_res['error']}")
+                                    continue # FIXED: Do not buy if AI is unreachable
                                 else:
                                     memetic_score = memetic_res.get("score", 0)
                                     reason = memetic_res.get("reason", "")
@@ -671,6 +672,7 @@ def run_live_real_trader():
                                         continue
                             except Exception as e:
                                 print(f"    -> [AI ERROR] DeepSeek tidak tersedia: {e}")
+                                continue # FIXED: Do not buy if AI throws exception
                                 
                             if score > best_score:
                                 best_score = score

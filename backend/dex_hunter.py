@@ -173,17 +173,14 @@ def check_token_security(chain: str, address: str) -> dict:
                         lp_unlocked = float(lp.get("lpUnlocked", 0) or 0)
                         lp_locked_pct = float(lp.get("lpLockedPct", 0) or 0)
                         # Block if the primary LP pool is not locked/burnt
-                        # If it is a mature token, we skip unlocked LP check as other users create unlocked pools
                         if is_new_token and lp_locked_pct < 90.0 and lp_unlocked > 0:
                             flags.append(f"RC_UNLOCKED_LP_PRIMARY_{primary_market.get('marketType','').upper()} ({lp_locked_pct:.1f}% Locked)")
-                            # DO NOT set is_safe = False because LP locks take time to index on RugCheck
-                            score_impact -= 10
+                            is_safe = False # FIXED: Instant reject if LP is unlocked!
 
                 # If it's a new token and we found no AMM market in RugCheck, block it (API lag bypass protection)
                 if is_new_token and not primary_market:
                     flags.append("RC_NO_AMM_MARKET_FOUND (LAG)")
-                    # DO NOT set is_safe = False because RugCheck has 15 minute lag for AMM indexing
-                    score_impact -= 5
+                    is_safe = False # FIXED: Instant reject if no AMM indexed yet!
             else:
                 flags.append(f"RUGCHECK_API_ERROR_STATUS_{r.status_code}")
                 is_safe = False

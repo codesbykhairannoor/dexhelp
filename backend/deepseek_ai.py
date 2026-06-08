@@ -59,7 +59,7 @@ Format: {{"score": <1-100 integer>, "reason": "<brief 1 sentence reason>"}}
     
     try:
         # Increase timeout because thinking takes longer
-        r = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=20)
+        r = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=45)
         latency = time.time() - start_time
         
         if r.status_code == 200:
