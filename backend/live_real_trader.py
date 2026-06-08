@@ -525,11 +525,32 @@ def run_live_real_trader():
                             sl_price = highest_price * 0.80
                             trail_level = "DEFAULT SL (20%)"
 
-                            
+                        # [HOTFIX] Time-Bomb Exit (Max hold 2 minutes without momentum)
+                        time_based_sl_triggered = False
+                        entry_ts = pos.get("entry_ts", 0)
+                        if entry_ts > 0:
+                            elapsed_sec = time.time() - entry_ts
+                            # TIME-BOMB EXIT: If held for > 120 seconds and profit < 10%, force sell!
+                            if elapsed_sec >= 120.0 and not pos.get("partial_tp_hit", False) and current_pnl_pct < 10.0:
+                                time_based_sl_triggered = True
+                                trail_level = "TIME-BOMB EXIT (120s no momentum)"
+                        else:
+                            # Fallback to old string format if entry_ts is missing
+                            entry_time_str = pos.get("entry_time")
+                            if entry_time_str:
+                                try:
+                                    old_entry_ts = time.mktime(time.strptime(entry_time_str, '%Y-%m-%d %H:%M:%S'))
+                                    elapsed_sec = time.time() - old_entry_ts
+                                    if elapsed_sec >= 120.0 and not pos.get("partial_tp_hit", False) and current_pnl_pct < 10.0:
+                                        time_based_sl_triggered = True
+                                        trail_level = "TIME-BOMB EXIT (120s no momentum)"
+                                except Exception:
+                                    pass
+
                         print(f"  [TRACKING] {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}% | Guard: {trail_level}", flush=True)
                         
                         # --- AUTOMATED ON-CHAIN STOP-LOSS SWAP SELL ---
-                        if current_price <= sl_price:
+                        if current_price <= sl_price or time_based_sl_triggered:
                             print(f"\n🚨 [EXIT TRIGGERED] {trail_level} hit for {pos['symbol']}! Executing real market sell swap...", flush=True)
                             
                             raw_qty = int(pos["raw_qty"])
@@ -727,7 +748,8 @@ def run_live_real_trader():
                                     "total_pnl_sol": 0.0,
                                     "raw_qty": raw_qty_received, # On-chain integer quantity
                                     "qty": float(raw_qty_received) / 1_000_000_000.0, # Visual representation
-                                    "entry_time": time.strftime('%Y-%m-%d %H:%M:%S')
+                                    "entry_time": time.strftime('%Y-%m-%d %H:%M:%S'),
+                                    "entry_ts": time.time()
                                 }
                                 closed_any = True
                             else:

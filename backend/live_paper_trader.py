@@ -476,18 +476,27 @@ def run_live_paper_trader():
                             
                         print(f"  [POSITION] {pos['symbol']} | Entry: ${entry_price:.8f} | Live: ${current_price:.8f} | Puncak: ${highest_price:.8f} | SL: ${sl_price:.8f} | PnL: {current_pnl_pct:+.2f}% | Guard: {trail_level}")
                         
-                        # [HOTFIX] Time-Based Dead Token Exit (Max hold 25 minutes without taking profit)
+                        # [HOTFIX] Time-Bomb Exit (Max hold 2 minutes without momentum)
                         time_based_sl_triggered = False
-                        entry_time_str = pos.get("entry_time")
-                        if entry_time_str:
-                            try:
-                                entry_ts = time.mktime(time.strptime(entry_time_str, '%Y-%m-%d %H:%M:%S'))
-                                elapsed_mins = (time.time() - entry_ts) / 60.0
-                                if elapsed_mins >= 25.0 and not pos.get("partial_tp_hit", False):
-                                    time_based_sl_triggered = True
-                                    trail_level = "DEAD TOKEN TIMEOUT (25m)"
-                            except Exception:
-                                pass
+                        entry_ts = pos.get("entry_ts", 0)
+                        if entry_ts > 0:
+                            elapsed_sec = time.time() - entry_ts
+                            # TIME-BOMB EXIT: If held for > 120 seconds and profit < 10%, force sell!
+                            if elapsed_sec >= 120.0 and not pos.get("partial_tp_hit", False) and current_pnl_pct < 10.0:
+                                time_based_sl_triggered = True
+                                trail_level = "TIME-BOMB EXIT (120s no momentum)"
+                        else:
+                            # Fallback to old string format if entry_ts is missing
+                            entry_time_str = pos.get("entry_time")
+                            if entry_time_str:
+                                try:
+                                    old_entry_ts = time.mktime(time.strptime(entry_time_str, '%Y-%m-%d %H:%M:%S'))
+                                    elapsed_sec = time.time() - old_entry_ts
+                                    if elapsed_sec >= 120.0 and not pos.get("partial_tp_hit", False) and current_pnl_pct < 10.0:
+                                        time_based_sl_triggered = True
+                                        trail_level = "TIME-BOMB EXIT (120s no momentum)"
+                                except Exception:
+                                    pass
                         
                         # Trigger exit ONLY when current price falls below dynamic trailing SL or time limit is reached
                         if current_price <= sl_price or time_based_sl_triggered:
@@ -667,7 +676,8 @@ def run_live_paper_trader():
                                     "original_gross_investment": trade_allocation,
                                     "total_pnl_usd": 0.0,
                                     "qty": qty,
-                                    "entry_time": time.strftime('%Y-%m-%d %H:%M:%S')
+                                    "entry_time": time.strftime('%Y-%m-%d %H:%M:%S'),
+                                    "entry_ts": time.time()
                                 }
                                 
                                 portfolio["wallet_balance"] -= trade_allocation
