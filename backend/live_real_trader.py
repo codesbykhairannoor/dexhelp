@@ -651,28 +651,8 @@ def run_live_real_trader():
                         from config import MIN_ENTRY_SCORE
                         min_entry_score = MIN_ENTRY_SCORE
                         if security["status"] in ["CLEAN & SAFE", "WARNINGS"] and score >= min_entry_score:
-                            # --- DEEPSEEK MEMETIC AI FILTER (Final Boss) ---
-                            try:
-                                from deepseek_ai import evaluate_token
-                                print(f"  [AI] Mengirim {gem['symbol']} ke DeepSeek untuk diuji Vibe/Memetic...")
-                                memetic_res = evaluate_token(gem['symbol'], gem['name'])
-                                if "error" in memetic_res:
-                                    print(f"    -> [AI ERROR] Gagal menghubungi DeepSeek. Skip filter memetic. Error: {memetic_res['error']}")
-                                    continue # FIXED: Do not buy if AI is unreachable
-                                else:
-                                    memetic_score = memetic_res.get("score", 0)
-                                    reason = memetic_res.get("reason", "")
-                                    deep_thoughts = memetic_res.get("deep_thoughts", "")
-                                    print(f"    -> [DEEPSEEK] Memetic Score: {memetic_score}/100 | {reason}")
-                                    if deep_thoughts:
-                                        print(f"    -> [THOUGHT] {deep_thoughts[:200]}...")
-                                        
-                                    if memetic_score < 80:
-                                        print(f"    -> [DITOLAK] Memetic AI Score terlalu rendah (<80). Potensi viral kecil / Jebakan Scammer.")
-                                        continue
-                            except Exception as e:
-                                print(f"    -> [AI ERROR] DeepSeek tidak tersedia: {e}")
-                                continue # FIXED: Do not buy if AI throws exception
+                            # --- AI FILTER REMOVED (OPSI C: Full On-Chain Speed) ---
+                            # Bot no longer waits for AI to prevent Top-Buying Trap
                                 
                             if score > best_score:
                                 best_score = score
