@@ -465,15 +465,15 @@ def run_live_real_trader():
                                     sl_price = highest_price * 0.85
                                     trail_level = "OPTIMIZED TIGHT SL (15%)"
                         elif trade_mode == "HIT_AND_RUN":
-                            if price_gain_pct >= 15.0:
-                                sl_price = current_price * 1.5 # Paksa jual instan 100% di +15%
-                                trail_level = "HIT & RUN (+15% TP MUTLAK)"
-                            elif price_gain_pct >= 8.0:
-                                sl_price = entry_price * 1.02
-                                trail_level = "HIT & RUN BE-LOCK (+2%)"
+                            if price_gain_pct >= 20.0:
+                                sl_price = current_price * 1.5 # Paksa jual instan 100% di +20%
+                                trail_level = "HIT & RUN (+20% TP MUTLAK)"
+                            elif price_gain_pct >= 10.0:
+                                sl_price = entry_price * 1.05
+                                trail_level = "HIT & RUN BE-LOCK (+5%)"
                             else:
-                                sl_price = highest_price * 0.90
-                                trail_level = "HIT & RUN INITIAL SL (10%)"
+                                sl_price = highest_price * 0.85
+                                trail_level = "HIT & RUN INITIAL SL (15%)"
                         elif trade_mode == "RUNNER":
                             if not pos.get("partial_tp_hit", False) and price_gain_pct >= 30.0:
                                 raw_qty = int(pos["raw_qty"])
@@ -525,15 +525,15 @@ def run_live_real_trader():
                             sl_price = highest_price * 0.80
                             trail_level = "DEFAULT SL (20%)"
 
-                        # [HOTFIX] Time-Bomb Exit (Max hold 2 minutes without momentum)
+                        # [HOTFIX] Time-Bomb Exit (Max hold 1 minute without momentum)
                         time_based_sl_triggered = False
                         entry_ts = pos.get("entry_ts", 0)
                         if entry_ts > 0:
                             elapsed_sec = time.time() - entry_ts
-                            # TIME-BOMB EXIT: If held for > 120 seconds and profit < 10%, force sell!
-                            if elapsed_sec >= 120.0 and not pos.get("partial_tp_hit", False) and current_pnl_pct < 10.0:
+                            # TIME-BOMB EXIT: If held for > 60 seconds and profit <= 0%, force sell!
+                            if elapsed_sec >= 60.0 and not pos.get("partial_tp_hit", False) and current_pnl_pct <= 0.0:
                                 time_based_sl_triggered = True
-                                trail_level = "TIME-BOMB EXIT (120s no momentum)"
+                                trail_level = "TIME-BOMB EXIT (60s no momentum)"
                         else:
                             # Fallback to old string format if entry_ts is missing
                             entry_time_str = pos.get("entry_time")
@@ -541,9 +541,9 @@ def run_live_real_trader():
                                 try:
                                     old_entry_ts = time.mktime(time.strptime(entry_time_str, '%Y-%m-%d %H:%M:%S'))
                                     elapsed_sec = time.time() - old_entry_ts
-                                    if elapsed_sec >= 120.0 and not pos.get("partial_tp_hit", False) and current_pnl_pct < 10.0:
+                                    if elapsed_sec >= 60.0 and not pos.get("partial_tp_hit", False) and current_pnl_pct <= 0.0:
                                         time_based_sl_triggered = True
-                                        trail_level = "TIME-BOMB EXIT (120s no momentum)"
+                                        trail_level = "TIME-BOMB EXIT (60s no momentum)"
                                 except Exception:
                                     pass
 
