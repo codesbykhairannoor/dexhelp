@@ -180,7 +180,9 @@ def check_token_security(chain: str, address: str) -> dict:
                 # If it's a new token and we found no AMM market in RugCheck, block it (API lag bypass protection)
                 if is_new_token and not primary_market:
                     flags.append("RC_NO_AMM_MARKET_FOUND (LAG)")
-                    is_safe = False # FIXED: Instant reject if no AMM indexed yet!
+                    # HOTFIX: Do NOT block, because RugCheck has 1-5m lag to index AMM for 0-minute snipes!
+                    # The Time-Bomb Exit will save us if it's a rug.
+                    score_impact -= 5
             else:
                 flags.append(f"RUGCHECK_API_ERROR_STATUS_{r.status_code}")
                 is_safe = False
