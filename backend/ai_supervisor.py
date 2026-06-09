@@ -100,23 +100,34 @@ This would have yielded a Net PnL of {opt_results['backtest_pnl']}% across {opt_
 
 Provide a 1-sentence confident summary to log into the bot's awareness state explaining why these parameters are perfect for current market conditions."""
 
-    try:
-        headers = {
-            "Authorization": f"Bearer {QWEN_API_KEY}",
-            "Content-Type": "application/json"
-        }
-        data = {
-            "model": "qwen-max",
-            "messages": [{"role": "user", "content": prompt}]
-        }
-        r = requests.post("https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions", headers=headers, json=data, timeout=10)
-        if r.status_code == 200:
-            content = r.json()["choices"][0]["message"]["content"]
-            return content.strip()
-        else:
-            return f"API Error: {r.status_code}"
-    except Exception as e:
-        return f"AI Connection Error: {e}"
+    models = ["qwen-turbo", "qwen-plus", "qwen-max"]
+    
+    headers = {
+        "Authorization": f"Bearer {QWEN_API_KEY}",
+        "Content-Type": "application/json"
+    }
+    
+    for model_name in models:
+        try:
+            data = {
+                "model": model_name,
+                "messages": [{"role": "user", "content": prompt}]
+            }
+            r = requests.post("https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions", headers=headers, json=data, timeout=10)
+            if r.status_code == 200:
+                content = r.json()["choices"][0]["message"]["content"]
+                return f"[{model_name}] {content.strip()}"
+            elif r.status_code == 429 or "quota" in r.text.lower():
+                print(f"[AI-SUPERVISOR] Model {model_name} quota exhausted or rate-limited. Trying next...")
+                continue
+            else:
+                print(f"[AI-SUPERVISOR] Model {model_name} failed with API Error: {r.status_code}. Trying next...")
+                continue
+        except Exception as e:
+            print(f"[AI-SUPERVISOR] Model {model_name} connection error: {e}. Trying next...")
+            continue
+            
+    return "AI Fallback Error: All models exhausted or failed."
 
 def run_supervisor():
     print("=" * 60)
