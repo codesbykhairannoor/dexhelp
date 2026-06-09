@@ -26,6 +26,16 @@ PORTFOLIO_FILE = os.path.join(CURRENT_DIR, "live_portfolio.json")
 ENV_PATH = os.path.join(os.path.dirname(CURRENT_DIR), ".env")
 load_dotenv(ENV_PATH)
 
+def load_dynamic_params() -> dict:
+    params_file = os.path.join(CURRENT_DIR, "dynamic_params.json")
+    try:
+        if os.path.exists(params_file):
+            with open(params_file, "r") as f:
+                return json.load(f)
+    except Exception as e:
+        print(f"[WARN] Failed to load dynamic_params.json: {e}")
+    return {}
+
 def load_live_portfolio() -> dict:
     if os.path.exists(PORTFOLIO_FILE):
         try:
@@ -111,6 +121,9 @@ def run_live_real_trader():
     
     while True:
         try:
+            dyn_params = load_dynamic_params()
+            dyn_mode = dyn_params.get("trade_mode", os.getenv("TRADE_MODE", "OPTIMIZED"))
+            
             # Clean up expired cooldowns to keep state clean
             current_time = time.time()
             if "cooldowns" in portfolio:
@@ -119,7 +132,7 @@ def run_live_real_trader():
             # Dynamic Wallet Balance query
             live_sol_balance = get_solana_balance(helius_url or drpc_url, user_wallet)
             print("\n" + "-" * 80)
-            print(f"[TICK SCAN] {time.strftime('%Y-%m-%d %H:%M:%S')} | Wallet SOL: {live_sol_balance:.6f} SOL | Active: {len(portfolio['active_positions'])}/2")
+            print(f"[TICK SCAN] {time.strftime('%Y-%m-%d %H:%M:%S')} | Wallet SOL: {live_sol_balance:.6f} SOL | Active: {len(portfolio['active_positions'])}/2 | Mode: {dyn_mode}")
             print("-" * 80)
             
             # --- PHASE 1: HIGH-FREQUENCY ACTIVE TRADES MONITORING ---
@@ -464,16 +477,19 @@ def run_live_real_trader():
                                 else:
                                     sl_price = highest_price * 0.85
                                     trail_level = "OPTIMIZED TIGHT SL (15%)"
-                        elif trade_mode == "HIT_AND_RUN":
-                            if price_gain_pct >= 20.0:
-                                sl_price = current_price * 1.5 # Paksa jual instan 100% di +20%
-                                trail_level = "HIT & RUN (+20% TP MUTLAK)"
-                            elif price_gain_pct >= 10.0:
+                        elif dyn_mode == "HIT_AND_RUN":
+                            dyn_tp = dyn_params.get("tp_pct", 20.0)
+                            dyn_sl = dyn_params.get("sl_pct", 15.0)
+                            
+                            if price_gain_pct >= dyn_tp:
+                                sl_price = current_price * 1.5 # Paksa jual instan 100% di TP
+                                trail_level = f"HIT & RUN (+{dyn_tp}% TP MUTLAK)"
+                            elif price_gain_pct >= (dyn_tp / 2):
                                 sl_price = entry_price * 1.05
-                                trail_level = "HIT & RUN BE-LOCK (+5%)"
+                                trail_level = f"HIT & RUN BE-LOCK (+5%)"
                             else:
-                                sl_price = highest_price * 0.85
-                                trail_level = "HIT & RUN INITIAL SL (15%)"
+                                sl_price = highest_price * (1 - (dyn_sl/100.0))
+                                trail_level = f"HIT & RUN INITIAL SL ({dyn_sl}%)"
                         elif trade_mode == "RUNNER":
                             if not pos.get("partial_tp_hit", False) and price_gain_pct >= 30.0:
                                 raw_qty = int(pos["raw_qty"])
@@ -525,15 +541,18 @@ def run_live_real_trader():
                             sl_price = highest_price * 0.80
                             trail_level = "DEFAULT SL (20%)"
 
-                        # [HOTFIX] Time-Bomb Exit (Max hold 1 minute without momentum)
+                        # [HOTFIX] Time-Bomb Exit (Dynamic Time Limit)
                         time_based_sl_triggered = False
+                        dyn_tb_mins = dyn_params.get("time_bomb_mins", 1.0)
+                        dyn_min_mom = dyn_params.get("min_momentum_pct", 0.0)
+                        dyn_tb_secs = dyn_tb_mins * 60.0
+                        
                         entry_ts = pos.get("entry_ts", 0)
                         if entry_ts > 0:
                             elapsed_sec = time.time() - entry_ts
-                            # TIME-BOMB EXIT: If held for > 60 seconds and profit <= 0%, force sell!
-                            if elapsed_sec >= 60.0 and not pos.get("partial_tp_hit", False) and current_pnl_pct <= 0.0:
+                            if elapsed_sec >= dyn_tb_secs and not pos.get("partial_tp_hit", False) and current_pnl_pct <= dyn_min_mom:
                                 time_based_sl_triggered = True
-                                trail_level = "TIME-BOMB EXIT (60s no momentum)"
+                                trail_level = f"TIME-BOMB EXIT ({dyn_tb_secs}s no momentum)"
                         else:
                             # Fallback to old string format if entry_ts is missing
                             entry_time_str = pos.get("entry_time")
@@ -541,9 +560,9 @@ def run_live_real_trader():
                                 try:
                                     old_entry_ts = time.mktime(time.strptime(entry_time_str, '%Y-%m-%d %H:%M:%S'))
                                     elapsed_sec = time.time() - old_entry_ts
-                                    if elapsed_sec >= 60.0 and not pos.get("partial_tp_hit", False) and current_pnl_pct <= 0.0:
+                                    if elapsed_sec >= dyn_tb_secs and not pos.get("partial_tp_hit", False) and current_pnl_pct <= dyn_min_mom:
                                         time_based_sl_triggered = True
-                                        trail_level = "TIME-BOMB EXIT (60s no momentum)"
+                                        trail_level = f"TIME-BOMB EXIT ({dyn_tb_secs}s no momentum)"
                                 except Exception:
                                     pass
 
