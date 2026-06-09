@@ -17,7 +17,7 @@ TRADE_MODE = "HIT_AND_RUN"
 # --- STRATEGY SCORING THRESHOLD ---
 # Skor minimal yang dikeluarkan oleh engine predator_score
 # BERSADARKAN SUPER BACKTEST: 80 (Karena kita berburu koin baru tanpa sosmed).
-MIN_ENTRY_SCORE = 80
+MIN_ENTRY_SCORE = 55  # Realistis untuk 0-minute token (max score tanpa socials/paid ~60)
 
 # --- DYNAMIC HIGH-FREQUENCY FILTERS (V26 OPTIMIZED) ---
 # Filter untuk mengambil koin baru di detik-detik awal peluncuran:
@@ -25,8 +25,8 @@ MAX_AGE_MINUTES = 10  # [SUPER SNIPER] Batas absolut umur koin maksimal (menit)
 MIN_LIQ = 2000        # Likuiditas minimal USD (Anti-Slippage)
 MAX_LIQ = 500000      # Likuiditas maksimal USD (Anti-Koin Raksasa/Lamban)
 MIN_MCAP = 2000       # Market Cap minimal USD
-MIN_VOL_5M = 1500     # Volume transaksi 5 menit minimal USD (Koin bayi tidak butuh 15k vol)
-MIN_TRADES_5M = 20    # Jumlah transaksi total 5 menit minimal (Buy + Sell)
+MIN_VOL_5M = 500      # Diturunkan: Token 0-menit awal belum punya volume tinggi
+MIN_TRADES_5M = 10    # Diturunkan: Token 0-menit cukup 10 tx untuk konfirmasi ada pembeli
 
 # Apakah wajib ada link Twitter/Website/Telegram di DexScreener?
 # BERSADARKAN HASIL SIMULASI: FALSE (Karena 80% koin pemenang awal tidak memiliki link sosial!)

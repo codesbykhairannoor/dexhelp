@@ -605,8 +605,8 @@ def _fetch_candidates() -> list:
                             print(f"    -> [DITOLAK] Aktivitas terlalu rendah (Syarat: ${min_vol} Vol, {min_trades} Trades).")
                             continue
                             
-                        # Strong buying pressure (Buy Ratio > 2.0)
-                        if buys >= 15 and buys > (sells * 2.0):
+                        # Strong buying pressure (Buy Ratio > 1.5x, minimum 10 buys)
+                        if buys >= 10 and buys > (sells * 1.5):
                             pair_created_at = pair.get('pairCreatedAt', 0)
                             if pair_created_at > 0:
                                 age_estimate_sec = max(0.0, (time.time() * 1000.0 - pair_created_at) / 1000.0)
