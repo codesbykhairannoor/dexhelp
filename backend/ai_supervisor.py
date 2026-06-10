@@ -299,6 +299,13 @@ def run_optimization() -> dict | None:
             "time_bomb_mins": float(best_p[2]), "min_momentum_pct": float(best_p[3]),
             "backtest_pnl": round(best_pnl, 2), "backtest_wr": round(best_wr, 1),
             "data_points": len(datasets)}
+
+def load_current_params() -> dict:
+    try:
+        if os.path.exists(PARAMS_FILE):
+            with open(PARAMS_FILE) as f: return json.load(f)
+    except: pass
+    return {"tp_pct": 20.0, "sl_pct": 15.0, "time_bomb_mins": 1.0, "min_momentum_pct": 0.0}
 # ===================== AI DECISION PROMPT (AGENTIC LOOP) =====================
 def build_prompt(portfolio: dict, opt: dict, cur_p: dict, file_list: list, config_content: str, journal_context: str) -> str:
     return f"""You are an elite AI Quant Trading Manager. You have full freedom to adapt strategies. Return JSON only.
