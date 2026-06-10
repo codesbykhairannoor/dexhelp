@@ -26,6 +26,15 @@ import sqlite3
 import subprocess
 import requests
 from datetime import datetime
+from duckduckgo_search import DDGS
+
+def search_web(query: str, max_results: int = 3) -> str:
+    """Search DuckDuckGo and return summary."""
+    try:
+        results = DDGS().text(query, max_results=max_results)
+        return json.dumps([{"title": r.get("title"), "body": r.get("body")} for r in results])
+    except Exception as e:
+        return f"[SEARCH ERROR] {e}"
 from dotenv import load_dotenv
 
 # ===================== PATH SETUP =====================
@@ -36,6 +45,7 @@ DB_PATH = os.path.join(CURRENT_DIR, "historical_candles.db")
 PARAMS_FILE = os.path.join(CURRENT_DIR, "dynamic_params.json")
 PAPER_PORTFOLIO_FILE = os.path.join(CURRENT_DIR, "paper_portfolio.json")
 LOG_FILE = os.path.join(CURRENT_DIR, "ai_supervisor_log.json")
+JOURNAL_FILE = os.path.join(CURRENT_DIR, "ai_lab_journal.json")
 INTERVAL_HOURS = 6
 BACKEND_DIR = CURRENT_DIR
 
@@ -289,17 +299,8 @@ def run_optimization() -> dict | None:
             "time_bomb_mins": float(best_p[2]), "min_momentum_pct": float(best_p[3]),
             "backtest_pnl": round(best_pnl, 2), "backtest_wr": round(best_wr, 1),
             "data_points": len(datasets)}
-
-# ===================== CURRENT PARAMS =====================
-def load_current_params() -> dict:
-    try:
-        if os.path.exists(PARAMS_FILE):
-            with open(PARAMS_FILE) as f: return json.load(f)
-    except: pass
-    return {"tp_pct": 20.0, "sl_pct": 15.0, "time_bomb_mins": 1.0, "min_momentum_pct": 0.0}
-
-# ===================== AI DECISION PROMPT (COMPACT) =====================
-def build_prompt(portfolio: dict, opt: dict, cur_p: dict, file_list: list, config_content: str) -> str:
+# ===================== AI DECISION PROMPT (AGENTIC LOOP) =====================
+def build_prompt(portfolio: dict, opt: dict, cur_p: dict, file_list: list, config_content: str, journal_context: str) -> str:
     return f"""You are an elite AI Quant Trading Manager. You have full freedom to adapt strategies. Return JSON only.
 
 LIVE PERFORMANCE: WR={portfolio['win_rate']:.0f}% PnL=${portfolio['total_pnl_usd']:+.2f} Trades={portfolio['total_trades']}
@@ -312,22 +313,24 @@ OPTIMIZER SAYS: TP={opt['tp_pct']}% SL={opt['sl_pct']}% TB={opt['time_bomb_mins'
 {config_content}
 -------------------------
 
+--- LAB JOURNAL (MEMORY) ---
+{journal_context}
+----------------------------
+
+AVAILABLE FILES: {file_list}
+
 RULES & CAPABILITIES:
-1. "time_bomb_mins", "sl_pct", "tp_pct" MUST be updated via the JSON fields below. Do NOT edit .py files for these.
-2. You have FULL AUTHORITY to edit `config.py` to adapt to the market. For example, if trades are losing, you can increase `MIN_ENTRY_SCORE` or `MIN_LIQ` to be more selective. If trades are too few, you can lower them.
-3. To edit `config.py`, provide the EXACT `old_snippet` as it appears in the code above, and your `new_snippet`.
-4. You may create new .py modules if you invent a new strategy component.
+1. You can perform multi-step reasoning by choosing an "action".
+2. Available actions: "read_file", "search_web", "commit_changes".
+3. If you want to read a file, return: {{"action": "read_file", "file": "filename.py"}}
+4. If you want to research the market, return: {{"action": "search_web", "query": "solana memecoin meta today"}}
+5. If you are ready to apply changes and finish the cycle, return: {{"action": "commit_changes", "apply_new_params": true/false, "tp_pct": ..., "sl_pct": ..., "time_bomb_mins": ..., "file_edits": [...], "new_files": [...], "hypothesis": "What do you expect this change to do? WR goes up? Slippage down?"}}
+6. When committing file edits, provide exact `old_snippet` and `new_snippet`.
+7. You MUST write a `hypothesis` when you commit changes so you can review it in the next cycle's LAB JOURNAL.
 
-Return STRICT JSON:
-{{
-  "apply_new_params": true/false,
-  "tp_pct": number, "sl_pct": number, "time_bomb_mins": number, "min_momentum_pct": number,
-  "file_edits": [{{"file": "config.py", "old_snippet": "MIN_ENTRY_SCORE = 55", "new_snippet": "MIN_ENTRY_SCORE = 65", "reason": "why"}}],
-  "new_files": [{{"filename": "x.py", "content": "code", "reason": "why"}}],
-  "reasoning": "Explain your genius adaptation in 2-3 sentences."
-}}"""
+Return STRICT JSON:"""
 
-# ===================== LOG =====================
+# ===================== LOG & JOURNAL =====================
 def append_log(entry: dict):
     logs = []
     try:
@@ -336,13 +339,26 @@ def append_log(entry: dict):
     except: pass
     logs.append(entry)
     with open(LOG_FILE, "w") as f:
-        json.dump(logs[-100:], f, indent=2)  # Keep last 100 only (memory safe)
+        json.dump(logs[-100:], f, indent=2)
+
+def load_journal() -> list:
+    try:
+        if os.path.exists(JOURNAL_FILE):
+            with open(JOURNAL_FILE) as f: return json.load(f)
+    except: pass
+    return []
+
+def append_journal(entry: dict):
+    journal = load_journal()
+    journal.append(entry)
+    with open(JOURNAL_FILE, "w") as f:
+        json.dump(journal[-10:], f, indent=2)
 
 # ===================== CORE CYCLE =====================
 def run_supervisor():
     now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     print("=" * 65)
-    print(f"[AI-SUPERVISOR v4.0] AWAKENED @ {now}")
+    print(f"[AI-SUPERVISOR v5.0 AGI] AWAKENED @ {now}")
     print("=" * 65)
 
     print("[1] Auditing portfolio...")
@@ -367,28 +383,65 @@ def run_supervisor():
 
     file_list = list_backend_files()
     config_content = read_file_snippet("config.py", 2000)
+    
+    # Format Journal Context
+    journal_entries = load_journal()
+    journal_context = "No previous memory."
+    if journal_entries:
+        journal_context = "\n".join([f"Cycle {e['ts']} - Hypothesis: {e['hypothesis']}" for e in journal_entries[-3:]])
 
-    print("[3] Consulting Qwen AI...")
-    prompt = build_prompt(portfolio, opt, cur_p, file_list, config_content)
-    ai_raw = ask_qwen(prompt, max_tokens=800)
-    print(f"    AI: {ai_raw[:500]}")
-
-    # Parse JSON
+    print("[3] Consulting Qwen AI (Agentic Loop)...")
+    prompt = build_prompt(portfolio, opt, cur_p, file_list, config_content, journal_context)
+    
     decision = None
-    try:
-        s = ai_raw.find("{"); e = ai_raw.rfind("}") + 1
-        if s >= 0 and e > s:
-            decision = json.loads(ai_raw[s:e])
-    except: pass
+    for iteration in range(5): # Max 5 turns
+        print(f"    Iteration {iteration+1}...")
+        ai_raw = ask_qwen(prompt, max_tokens=800)
+        
+        parsed = None
+        try:
+            s = ai_raw.find("{"); e = ai_raw.rfind("}") + 1
+            if s >= 0 and e > s:
+                parsed = json.loads(ai_raw[s:e])
+        except: pass
+
+        if not parsed:
+            print("    [WARN] Invalid JSON from AI. Aborting loop.")
+            break
+            
+        action = parsed.get("action", "commit_changes")
+        
+        if action == "read_file":
+            target_file = parsed.get("file")
+            print(f"    [AI ACTION] Reading file: {target_file}")
+            content = read_file_snippet(target_file, 5000)
+            prompt += f"\n\n[USER: File {target_file} Content]\n{content}\nWhat is your next action?"
+            continue
+            
+        elif action == "search_web":
+            query = parsed.get("query")
+            print(f"    [AI ACTION] Web Search: {query}")
+            results = search_web(query)
+            prompt += f"\n\n[USER: Web Search Results for '{query}']\n{results}\nWhat is your next action?"
+            continue
+            
+        elif action == "commit_changes":
+            decision = parsed
+            print(f"    [AI ACTION] Commit Changes. Hypothesis: {decision.get('hypothesis', 'None')}")
+            break
+            
+        else:
+            print(f"    [WARN] Unknown action: {action}")
+            break
 
     if not decision:
-        print("    [WARN] Invalid JSON from AI. Rule-based fallback.")
+        print("    [WARN] No final decision reached. Rule-based fallback.")
         decision = {
             "apply_new_params": portfolio["total_pnl_usd"] < 0,
             "tp_pct": opt["tp_pct"], "sl_pct": opt["sl_pct"],
             "time_bomb_mins": opt["time_bomb_mins"], "min_momentum_pct": opt["min_momentum_pct"],
             "file_edits": [], "new_files": [],
-            "reasoning": f"Fallback. PnL={portfolio['total_pnl_usd']:.2f} WR={portfolio['win_rate']:.0f}%"
+            "hypothesis": f"Fallback. PnL={portfolio['total_pnl_usd']:.2f}"
         }
 
     changed_files = []
@@ -438,7 +491,7 @@ def run_supervisor():
             "time_bomb_mins": float(decision.get("time_bomb_mins", opt["time_bomb_mins"])),
             "min_momentum_pct": float(decision.get("min_momentum_pct", 0.0)),
             "last_updated": now,
-            "ai_reasoning": decision.get("reasoning", "")
+            "ai_reasoning": decision.get("hypothesis", "")
         }
         with open(PARAMS_FILE, "w") as f:
             json.dump(new_params, f, indent=4)
@@ -448,17 +501,17 @@ def run_supervisor():
         os.system("pm2 restart bot-paper")
         os.system("pm2 restart bot-real")
     else:
-        print(f"[6] No param changes. {decision.get('reasoning', '')}")
+        print(f"[6] No param changes. {decision.get('hypothesis', '')}")
 
     # --- Git push if anything changed ---
     if changed_files:
         print(f"[8] Pushing {len(changed_files)} changed file(s) to GitHub...")
-        summary = decision.get("reasoning", "Auto-optimization cycle")
+        summary = decision.get("hypothesis", "Auto-optimization cycle")
         git_push_changes(summary, changed_files)
     else:
         print("[8] No changes to push.")
 
-    # --- Log ---
+    # --- Log & Journal ---
     append_log({
         "ts": now,
         "portfolio": {"bal": portfolio["wallet_balance"], "pnl": portfolio["total_pnl_usd"],
@@ -466,7 +519,13 @@ def run_supervisor():
         "opt": opt, "decision": decision,
         "changed_files": changed_files
     })
-    print(f"[LOG] Saved to ai_supervisor_log.json")
+    
+    append_journal({
+        "ts": now,
+        "hypothesis": decision.get("hypothesis", "No hypothesis provided")
+    })
+    
+    print(f"[LOG] Saved to ai_supervisor_log.json and ai_lab_journal.json")
     print(f"[AI-SUPERVISOR] Done. Sleeping {INTERVAL_HOURS}h...\n")
 
 # ===================== MAIN =====================

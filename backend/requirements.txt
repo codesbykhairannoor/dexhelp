@@ -35,4 +35,5 @@ ccxt
 feedparser
 openai
 gitpython
+duckduckgo-search
 
