@@ -299,31 +299,32 @@ def load_current_params() -> dict:
     return {"tp_pct": 20.0, "sl_pct": 15.0, "time_bomb_mins": 1.0, "min_momentum_pct": 0.0}
 
 # ===================== AI DECISION PROMPT (COMPACT) =====================
-def build_prompt(portfolio: dict, opt: dict, cur_p: dict, file_list: list) -> str:
-    return f"""You are an autonomous AI Trading Bot Manager. Be concise. Return JSON only.
+def build_prompt(portfolio: dict, opt: dict, cur_p: dict, file_list: list, config_content: str) -> str:
+    return f"""You are an elite AI Quant Trading Manager. You have full freedom to adapt strategies. Return JSON only.
 
 LIVE PERFORMANCE: WR={portfolio['win_rate']:.0f}% PnL=${portfolio['total_pnl_usd']:+.2f} Trades={portfolio['total_trades']}
 EXIT BREAKDOWN: {json.dumps(portfolio['exit_distribution'])}
 LAST 10: {json.dumps(portfolio['recent_trades'])}
 CURRENT PARAMS: TP={cur_p.get('tp_pct')}% SL={cur_p.get('sl_pct')}% TB={cur_p.get('time_bomb_mins')}min
 OPTIMIZER SAYS: TP={opt['tp_pct']}% SL={opt['sl_pct']}% TB={opt['time_bomb_mins']}min WR={opt['backtest_wr']}% PnL={opt['backtest_pnl']}%
-BACKEND FILES: {file_list}
 
-RULES:
-- If WR>65%: small tweaks only
-- If WR<40% or PnL negative: apply optimizer NOW
-- TIME-BOMB dominant: increase time_bomb_mins (Change the JSON field 'time_bomb_mins', do NOT edit .py files for this)
-- SL dominant: tighten sl_pct (Change the JSON field 'sl_pct')
-- File edits (file_edits) are ONLY for changing filter thresholds in config.py (e.g. MIN_ENTRY_SCORE, MIN_LIQ) or dex_hunter.py. Provide EXACT old_snippet and new_snippet.
-- You may create new files if a new utility/strategy module would help
+--- CURRENT config.py ---
+{config_content}
+-------------------------
 
-Return STRICT JSON (no markdown):
+RULES & CAPABILITIES:
+1. "time_bomb_mins", "sl_pct", "tp_pct" MUST be updated via the JSON fields below. Do NOT edit .py files for these.
+2. You have FULL AUTHORITY to edit `config.py` to adapt to the market. For example, if trades are losing, you can increase `MIN_ENTRY_SCORE` or `MIN_LIQ` to be more selective. If trades are too few, you can lower them.
+3. To edit `config.py`, provide the EXACT `old_snippet` as it appears in the code above, and your `new_snippet`.
+4. You may create new .py modules if you invent a new strategy component.
+
+Return STRICT JSON:
 {{
   "apply_new_params": true/false,
   "tp_pct": number, "sl_pct": number, "time_bomb_mins": number, "min_momentum_pct": number,
-  "file_edits": [{{"file": "x.py", "old_snippet": "exact text to find", "new_snippet": "replacement text", "reason": "why"}}],
-  "new_files": [{{"filename": "x.py", "content": "full file content", "reason": "why"}}],
-  "reasoning": "2 sentences max"
+  "file_edits": [{{"file": "config.py", "old_snippet": "MIN_ENTRY_SCORE = 55", "new_snippet": "MIN_ENTRY_SCORE = 65", "reason": "why"}}],
+  "new_files": [{{"filename": "x.py", "content": "code", "reason": "why"}}],
+  "reasoning": "Explain your genius adaptation in 2-3 sentences."
 }}"""
 
 # ===================== LOG =====================
@@ -365,10 +366,11 @@ def run_supervisor():
     print(f"    Best: TP={opt['tp_pct']}% SL={opt['sl_pct']}% TB={opt['time_bomb_mins']}m WR={opt['backtest_wr']}%")
 
     file_list = list_backend_files()
+    config_content = read_file_snippet("config.py", 2000)
 
     print("[3] Consulting Qwen AI...")
-    prompt = build_prompt(portfolio, opt, cur_p, file_list)
-    ai_raw = ask_qwen(prompt)
+    prompt = build_prompt(portfolio, opt, cur_p, file_list, config_content)
+    ai_raw = ask_qwen(prompt, max_tokens=800)
     print(f"    AI: {ai_raw[:500]}")
 
     # Parse JSON
