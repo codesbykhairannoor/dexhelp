@@ -312,9 +312,9 @@ BACKEND FILES: {file_list}
 RULES:
 - If WR>65%: small tweaks only
 - If WR<40% or PnL negative: apply optimizer NOW
-- TIME-BOMB dominant: increase time_bomb_mins
-- SL dominant: tighten sl_pct
-- You may edit any backend .py file (provide exact old_snippet to find and new_snippet to replace)
+- TIME-BOMB dominant: increase time_bomb_mins (Change the JSON field 'time_bomb_mins', do NOT edit .py files for this)
+- SL dominant: tighten sl_pct (Change the JSON field 'sl_pct')
+- File edits (file_edits) are ONLY for changing filter thresholds in config.py (e.g. MIN_ENTRY_SCORE, MIN_LIQ) or dex_hunter.py. Provide EXACT old_snippet and new_snippet.
 - You may create new files if a new utility/strategy module would help
 
 Return STRICT JSON (no markdown):
