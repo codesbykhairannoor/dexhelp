@@ -350,12 +350,20 @@ def run_supervisor():
 
     print("[2] Running optimizer...")
     opt = run_optimization()
+    cur_p = load_current_params()
     if not opt:
-        print("    No data. Skipping cycle.")
-        return
+        print("    [WARN] No historical data. Skipping optimizer, falling back to current params.")
+        opt = {
+            "tp_pct": cur_p.get("tp_pct", 20.0),
+            "sl_pct": cur_p.get("sl_pct", 15.0),
+            "time_bomb_mins": cur_p.get("time_bomb_mins", 1.0),
+            "min_momentum_pct": cur_p.get("min_momentum_pct", 0.0),
+            "backtest_wr": portfolio["win_rate"],
+            "backtest_pnl": portfolio["total_pnl_usd"],
+            "data_points": 0
+        }
     print(f"    Best: TP={opt['tp_pct']}% SL={opt['sl_pct']}% TB={opt['time_bomb_mins']}m WR={opt['backtest_wr']}%")
 
-    cur_p = load_current_params()
     file_list = list_backend_files()
 
     print("[3] Consulting Qwen AI...")
