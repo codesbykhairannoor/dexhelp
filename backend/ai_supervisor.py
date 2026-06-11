@@ -19,6 +19,7 @@ Design Principles (Token & Memory Efficient):
 """
 
 import os
+import sys
 import re
 import time
 import json
@@ -175,7 +176,7 @@ def safe_edit_file(filename: str, old_snippet: str, new_snippet: str) -> bool:
             f.write(new_content)
         # Verify syntax
         check = subprocess.run(
-            ["python3", "-m", "py_compile", filepath],
+            [sys.executable, "-m", "py_compile", filepath],
             capture_output=True, text=True
         )
         if check.returncode != 0:
@@ -203,8 +204,9 @@ def create_new_file(filename: str, content: str) -> bool:
         with open(filepath, "w", encoding="utf-8") as f:
             f.write(content)
         # Verify syntax
+        import sys
         check = subprocess.run(
-            ["python3", "-m", "py_compile", filepath],
+            [sys.executable, "-m", "py_compile", filepath],
             capture_output=True, text=True
         )
         if check.returncode != 0:
@@ -336,7 +338,7 @@ RULES & CAPABILITIES:
 7. If you want to read a file, return: {{"action": "read_file", "file": "filename.py"}}
 8. If you want to research the market, return: {{"action": "search_web", "query": "solana memecoin meta today"}}
 9. If you are ready to apply changes and finish the cycle, return: {{"action": "commit_changes", "apply_new_params": true/false, "tp_pct": ..., "sl_pct": ..., "time_bomb_mins": ..., "file_edits": [...], "new_files": [...], "hypothesis": "What do you expect this change to do? WR goes up? Slippage down?"}}
-10. When committing file edits, provide exact `old_snippet` and `new_snippet`.
+10. When committing file edits, you MUST provide the filename: {{"file": "config.py", "old_snippet": "exact old", "new_snippet": "exact new"}}
 11. You MUST write a unique `hypothesis` when you commit changes so you can review it in the next cycle's LAB JOURNAL.
 
 Return STRICT JSON:"""
