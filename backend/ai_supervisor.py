@@ -327,13 +327,17 @@ OPTIMIZER SAYS: TP={opt['tp_pct']}% SL={opt['sl_pct']}% TB={opt['time_bomb_mins'
 AVAILABLE FILES: {file_list}
 
 RULES & CAPABILITIES:
-1. You can perform multi-step reasoning by choosing an "action".
-2. Available actions: "read_file", "search_web", "commit_changes".
-3. If you want to read a file, return: {{"action": "read_file", "file": "filename.py"}}
-4. If you want to research the market, return: {{"action": "search_web", "query": "solana memecoin meta today"}}
-5. If you are ready to apply changes and finish the cycle, return: {{"action": "commit_changes", "apply_new_params": true/false, "tp_pct": ..., "sl_pct": ..., "time_bomb_mins": ..., "file_edits": [...], "new_files": [...], "hypothesis": "What do you expect this change to do? WR goes up? Slippage down?"}}
-6. When committing file edits, provide exact `old_snippet` and `new_snippet`.
-7. You MUST write a `hypothesis` when you commit changes so you can review it in the next cycle's LAB JOURNAL.
+1. "time_bomb_mins", "sl_pct", "tp_pct" MUST be updated via the JSON fields below. Do NOT edit .py files for these.
+2. You have FULL AUTHORITY to edit `config.py` to adapt to the market. For example, if trades are losing, you can increase `MIN_ENTRY_SCORE` or `MIN_LIQ` to be more selective. If trades are too few, you can lower them.
+3. To edit `config.py`, provide the EXACT `old_snippet` as it appears in the code above, and your `new_snippet`.
+4. You may create new .py modules if you invent a new strategy component.
+5. CRITICAL: Read the LAB JOURNAL. If your previous hypothesis failed or was repeated, DO NOT repeat it. Invent a COMPLETELY NEW hypothesis and try editing different parameters.
+6. Available actions: "read_file", "search_web", "commit_changes".
+7. If you want to read a file, return: {{"action": "read_file", "file": "filename.py"}}
+8. If you want to research the market, return: {{"action": "search_web", "query": "solana memecoin meta today"}}
+9. If you are ready to apply changes and finish the cycle, return: {{"action": "commit_changes", "apply_new_params": true/false, "tp_pct": ..., "sl_pct": ..., "time_bomb_mins": ..., "file_edits": [...], "new_files": [...], "hypothesis": "What do you expect this change to do? WR goes up? Slippage down?"}}
+10. When committing file edits, provide exact `old_snippet` and `new_snippet`.
+11. You MUST write a unique `hypothesis` when you commit changes so you can review it in the next cycle's LAB JOURNAL.
 
 Return STRICT JSON:"""
 
