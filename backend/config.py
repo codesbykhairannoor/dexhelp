@@ -12,16 +12,16 @@
 #   MOONSHOT        (WR 50% PnL +26%)
 #   SCALPER         (WR 75% PnL +4.7%)
 #   HOLY_GRAIL_75WR (WR 75-80% PnL +15%) -> Mode agresif TP awal 50%
-TRADE_MODE = "HIT_AND_RUN"
+TRADE_MODE = "SCALPER"
 
 # --- STRATEGY SCORING THRESHOLD ---
 # Skor minimal yang dikeluarkan oleh engine predator_score
 # BERSADARKAN SUPER BACKTEST: 80 (Karena kita berburu koin baru tanpa sosmed).
-MIN_ENTRY_SCORE = 75  # Naikkan ke 75 untuk filter kualitas yang lebih ketat
+MIN_ENTRY_SCORE = 80  # Naikkan ke 75 untuk filter kualitas yang lebih ketat
 
 # --- DYNAMIC HIGH-FREQUENCY FILTERS (V26 OPTIMIZED) ---
 # Filter untuk mengambil koin baru di detik-detik awal peluncuran:
-MAX_AGE_MINUTES = 5  # [SUPER SNIPER] Batas absolut umur koin maksimal (menit)
+MAX_AGE_MINUTES = 2  # [SUPER SNIPER] Batas absolut umur koin maksimal (menit)
 MIN_LIQ = 2000        # Likuiditas minimal USD (Anti-Slippage)
 MAX_LIQ = 500000      # Likuiditas maksimal USD (Anti-Koin Raksasa/Lamban)
 MIN_MCAP = 2000       # Market Cap minimal USD
