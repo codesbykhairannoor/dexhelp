@@ -17,11 +17,11 @@ TRADE_MODE = "SCALPER"
 # --- STRATEGY SCORING THRESHOLD ---
 # Skor minimal yang dikeluarkan oleh engine predator_score
 # BERSADARKAN SUPER BACKTEST: 80 (Karena kita berburu koin baru tanpa sosmed).
-MIN_ENTRY_SCORE = 85  # Naikkan ke 85 untuk filter kualitas yang lebih ketat
+MIN_ENTRY_SCORE = 90  # Naikkan ke 85 untuk filter kualitas yang lebih ketat
 
 # --- DYNAMIC HIGH-FREQUENCY FILTERS (V26 OPTIMIZED) ---
 # Filter untuk mengambil koin baru di detik-detik awal peluncuran:
-MAX_AGE_MINUTES = 1  # [SUPER SNIPER] Batas absolut umur koin maksimal (menit)
+MAX_AGE_MINUTES = 2  # [SUPER SNIPER] Batas absolut umur koin maksimal (menit)
 MIN_LIQ = 2000        # Likuiditas minimal USD (Anti-Slippage)
 MAX_LIQ = 500000      # Likuiditas maksimal USD (Anti-Koin Raksasa/Lamban)
 MIN_MCAP = 2000       # Market Cap minimal USD
