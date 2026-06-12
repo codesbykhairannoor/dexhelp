@@ -56,17 +56,23 @@ GITHUB_TOKEN = os.getenv("GITHUB_TOKEN", "")
 GITHUB_REPO = os.getenv("GITHUB_REPO", "codesbykhairannoor/dexhelp")
 
 # ===================== QWEN LLM (cheapest first, token-efficient) =====================
-MODELS = ["qwen-turbo", "qwen-plus", "qwen-max"]
-
-def ask_qwen(prompt: str, max_tokens: int = 450) -> str:
-    """Call Qwen with automatic fallback. Keeps max_tokens low to save quota."""
+def ask_qwen(prompt: str, max_tokens: int = 2500) -> str:
+    """Send prompt to Qwen API via Alibaba DashScope (OpenAI Compatible) with 5-tier graceful fallback."""
+    # List 5 model Alibaba dari yang paling hemat (murah/cepat) sampai yang paling canggih (mahal)
+    models = [
+        "qwen-turbo",         # Paling hemat token & cepat
+        "qwen-plus",          # Cerdas & menengah
+        "qwen-coder-plus",    # Sangat ahli dalam parsing JSON & Kode (Fallback ideal)
+        "qwen-max",           # Paling pintar (Tier tertinggi Alibaba)
+        "qwen2.5-72b-instruct"# Model Open-Source raksasa (Sebagai asuransi terakhir)
+    ]
     if not QWEN_API_KEY:
         return "NO_API_KEY"
     headers = {
         "Authorization": f"Bearer {QWEN_API_KEY}",
         "Content-Type": "application/json"
     }
-    for model_name in MODELS:
+    for model_name in models:
         try:
             payload = {
                 "model": model_name,
