@@ -60,11 +60,11 @@ def ask_qwen(prompt: str, max_tokens: int = 2500) -> str:
     """Send prompt to Qwen API via Alibaba DashScope (OpenAI Compatible) with 5-tier graceful fallback."""
     # List 5 model Alibaba dari yang paling hemat (murah/cepat) sampai yang paling canggih (mahal)
     models = [
-        "qwen-turbo",         # Paling hemat token & cepat
-        "qwen-plus",          # Cerdas & menengah
-        "qwen-coder-plus",    # Sangat ahli dalam parsing JSON & Kode (Fallback ideal)
-        "qwen-max",           # Paling pintar (Tier tertinggi Alibaba)
-        "qwen2.5-72b-instruct"# Model Open-Source raksasa (Sebagai asuransi terakhir)
+        "qwen3.5-plus-2026-02-15",     # Model terbaru, kuota 1 Miliar
+        "qwen-plus-2025-07-28",        # Kuota 1 Miliar
+        "qwen3-max",                   # Paling pintar, kuota 1 Miliar
+        "qwen-coder-plus",             # Spesialis JSON/Kode
+        "qwen-turbo"                   # Cepat dan ringan
     ]
     if not QWEN_API_KEY:
         return "NO_API_KEY"
