@@ -75,7 +75,7 @@ def ask_qwen(prompt: str, max_tokens: int = 450) -> str:
             }
             r = requests.post(
                 "https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions",
-                headers=headers, json=payload, timeout=20
+                headers=headers, json=payload, timeout=60
             )
             if r.status_code == 200:
                 reply = r.json()["choices"][0]["message"]["content"].strip()
