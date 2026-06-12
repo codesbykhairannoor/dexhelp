@@ -17,15 +17,15 @@ TRADE_MODE = "HIT_AND_RUN"
 # --- STRATEGY SCORING THRESHOLD ---
 # Skor minimal yang dikeluarkan oleh engine predator_score
 # BERSADARKAN SUPER BACKTEST: 80 (Karena kita berburu koin baru tanpa sosmed).
-MIN_ENTRY_SCORE = 75  # REBALANCED: Frekuensi sudah tercapai, sekarang tingkatkan kualitas entry untuk hindari rug/dump
+MIN_ENTRY_SCORE = 85  # QUALITY OVER QUANTITY: 2/2 losses at score 75. Need higher conviction entries only
 
 # --- DYNAMIC HIGH-FREQUENCY FILTERS (V26 OPTIMIZED) ---
 # Filter untuk mengambil koin baru di detik-detik awal peluncuran:
-MAX_AGE_MINUTES = 3  # KURANGI: Koin >3 menit sering kali sudah pump & dump, butuh kesegaran untuk momentum
-MIN_LIQ = 10000       # KRITIS: $1.8k menyebabkan slippage parah (bukti loss -34% pada SL 10%). $10k wajib untuk eksekusi aman
+MAX_AGE_MINUTES = 1.5  # CRITICAL FIX: 3min too late - coins already dumping by then. Need sub-2min for fresh momentum capture
+MIN_LIQ = 20000       # CRITICAL FIX: $10k still caused -34% slippage on DICKFACE. $20k minimum for clean SL execution
 MAX_LIQ = 450000      # Slightly tighter: Hindari koin yang mulai melambat karena ukuran
 MIN_MCAP = 1800       # Turun sedikit untuk cap bottoming new launches
-MIN_VOL_5M = 25000    # TINGKATKAN: $7k terlalu mudah dimanipulasi whale. $25k validasi momentum organik kuat
+MIN_VOL_5M = 35000    # TIGHTER: $25k still allowed weak momentum. $35k ensures genuine buying pressure
 MIN_TRADES_5M = 20    # Turun ke 20: Validasi partisipasi user tetap ada tanpa batasi terlalu ketat
 
 # Apakah wajib ada link Twitter/Website/Telegram di DexScreener?
