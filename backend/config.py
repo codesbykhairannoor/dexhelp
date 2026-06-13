@@ -17,16 +17,16 @@ TRADE_MODE = "HIT_AND_RUN"
 # --- STRATEGY SCORING THRESHOLD ---
 # Skor minimal yang dikeluarkan oleh engine predator_score
 # BERSADARKAN SUPER BACKTEST: 80 (Karena kita berburu koin baru tanpa sosmed).
-MIN_ENTRY_SCORE = 85  # ADJUSTED: 92 too restrictive, only 2 trades. 85 allows more opportunities while maintaining quality
+MIN_ENTRY_SCORE = 87  # INCREASED: Raise conviction bar slightly after repeated SL hits. Balance between quality and quantity.
 
 # --- DYNAMIC HIGH-FREQUENCY FILTERS (V26 OPTIMIZED) ---
 # Filter untuk mengambil koin baru di detik-detik awal peluncuran:
-MAX_AGE_MINUTES = 1.5  # ADJUSTED: 0.75min too tight, missing viable entries. 1.5min balances freshness with opportunity
-MIN_LIQ = 50000       # CRITICAL FIX: $35k FAILED - DICKFACE -34% loss proves insufficient. $50k+ needed for clean SL execution
-MAX_LIQ = 450000      # Slightly tighter: Hindari koin yang mulai melambat karena ukuran
-MIN_MCAP = 1800       # Turun sedikit untuk cap bottoming new launches
-MIN_VOL_5M = 75000    # TIGHTER: $55k still allowed weak momentum. $75k ensures strong sustained volume for reliable exits
-MIN_TRADES_5M = 20    # Turun ke 20: Validasi partisipasi user tetap ada tanpa batasi terlalu ketat
+MAX_AGE_MINUTES = 1.2  # NEW: Tighten from 1.5 to 1.2 minutes — catch coins earlier in pump phase without being too late
+MIN_LIQ = 60000       # RAISED: From $50k to $60k to further reduce slippage risk after DICKFACE -34% loss despite previous fix
+MAX_LIQ = 400000      # Slightly lower to avoid mid-sized coins losing momentum
+MIN_MCAP = 2000       # Slight increase to filter out extremely low-cap noise
+MIN_VOL_5M = 80000    # RAISED: From $75k to $80k to ensure stronger, cleaner momentum entering the trade
+MIN_TRADES_5M = 22    # Increase to confirm higher participation and organic traction
 
 # Apakah wajib ada link Twitter/Website/Telegram di DexScreener?
 # BERSADARKAN HASIL SIMULASI: FALSE (Karena 80% koin pemenang awal tidak memiliki link sosial!)
