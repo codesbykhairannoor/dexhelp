@@ -16,17 +16,17 @@ TRADE_MODE = "HIT_AND_RUN"
 
 # --- STRATEGY SCORING THRESHOLD ---
 # Skor minimal yang dikeluarkan oleh engine predator_score
-# BERSADARKAN SUPER BACKTEST: 80 (Karena kita berburu koin baru tanpa sosmed).
-MIN_ENTRY_SCORE = 85  # RAISED: Revert looseness — after failed scalper shift, we now demand higher signal quality to filter false pumps amid increasing noise
+# BERSADARKAN SUPER_BACKTEST: 80 (Karena kita berburu koin baru tanpa sosmed).
+MIN_ENTRY_SCORE = 87  # INCREASED: After repeated 0% WR despite elite execution, we raise bar for signal purity — only strongest predator signals allowed
 
 # --- DYNAMIC HIGH-FREQUENCY FILTERS (V26 OPTIMIZED) ---
 # Filter untuk mengambil koin baru di detik-detik awal peluncuran:
-MAX_AGE_MINUTES = 0.9  # TIGHTENED: Enter earlier in the pump lifecycle — 1.1min was too late, allowing distribution to begin before entry
-MIN_LIQ = 75000        # RAISED: Increase pool depth requirement to dominate exit execution and reduce slippage below -10%
-MAX_LIQ = 300000       # Lowered to avoid coins attracting institutional-sized liquidity which dampens volatility
+MAX_AGE_MINUTES = 0.8  # NEW RECORD: Enter at 48 seconds or earlier — ultra-early assault window to beat retail flood and anti-sniper traps
+MIN_LIQ = 80000        # RAISED: Further increase to ensure dominance over exit flow and crush slippage
+MAX_LIQ = 275000       # Slightly lowered to avoid large-cap memecoins with muted volatility
 MIN_MCAP = 2500        # Unchanged — still effective at noise filtration
-MIN_VOL_5M = 95000     # RAISED: Only accept extreme volume momentum, confirming retail FOMO phase is active
-MIN_TRADES_5M = 30     # MAXED: Highest crowd validation threshold yet — ensures broad participation, not just whale-driven pumps
+MIN_VOL_5M = 100000    # RAISED: Only accept nuclear-level volume confirmation — filtering out fake momentum
+MIN_TRADES_5M = 35     # NEW HIGH: Extreme crowd consensus required — no more whale solo pumps
 
 # Apakah wajib ada link Twitter/Website/Telegram di DexScreener?
 # BERSADARKAN HASIL SIMULASI: FALSE (Karena 80% koin pemenang awal tidak memiliki link sosial!)
