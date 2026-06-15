@@ -12,21 +12,21 @@
 #   MOONSHOT        (WR 50% PnL +26%)
 #   SCALPER         (WR 75% PnL +4.7%)
 #   HOLY_GRAIL_75WR (WR 75-80% PnL +15%) -> Mode agresif TP awal 50%
-TRADE_MODE = "SCALPER"
+TRADE_MODE = "HIT_AND_RUN"
 
 # --- STRATEGY SCORING THRESHOLD ---
 # Skor minimal yang dikeluarkan oleh engine predator_score
 # BERSADARKAN SUPER_BACKTEST: 80 (Karena kita berburu koin baru tanpa sosmed).
-MIN_ENTRY_SCORE = 83  # LOWERED: After prolonged zero-win cycle with ultra-strict entry, we reduce threshold slightly to allow higher volume under improved TP/SL dynamics — prioritizing actionable edge over perfection
+MIN_ENTRY_SCORE = 85  # RAISED: To enforce elite signal integrity after repeated failure of lower-score entries which were hunted by anti-sniper mechanics
 
 # --- DYNAMIC HIGH-FREQUENCY FILTERS (V26 OPTIMIZED) ---
 # Filter untuk mengambil koin baru di detik-detik awal peluncuran:
-MAX_AGE_MINUTES = 0.9  # LOOSENED: To account for blockchain propagation delay; entering between 48–54s proved fatal in multiple cycles, so we extend to 54s to capture ignition phase without missing entries
-MIN_LIQ = 75000        # SLIGHTLY LOWERED: $80k+ is too restrictive post-consolidation; $75k ensures sufficient trade flow while maintaining slippage control
-MAX_LIQ = 250000       # Tightened to focus on mid-volatility memecoins with room to run
-MIN_MCAP = 2500        # Unchanged — still effective at noise filtration
-MIN_VOL_5M = 90000     # Adjusted down from $100k to increase opportunity flow while staying above fake pumps
-MIN_TRADES_5M = 30     # Reduced from 35 to prevent overfiltering during early pump formation
+MAX_AGE_MINUTES = 0.7  # TIGHTENED: To enter before public snipers detect — targeting 42s mark to be first real buyer post-dev
+MIN_LIQ = 90000        # RAISED: Ensures deep enough liquidity to survive initial dump and attract momentum buyers
+MAX_LIQ = 220000       # Slightly tightened to avoid overly mature launches
+MIN_MCAP = 3000        # RAISED: Filters out extremely low-cap traps that lack organic momentum
+MIN_VOL_5M = 110000    # RAISED: Confirms strong buy pressure within first minute
+MIN_TRADES_5M = 40     # RAISED: Validates crowd consensus — high trader count reduces single-wallet manipulation risk
 
 # Apakah wajib ada link Twitter/Website/Telegram di DexScreener?
 # BERSADARKAN HASIL SIMULASI: FALSE (Karena 80% koin pemenang awal tidak memiliki link sosial!)
