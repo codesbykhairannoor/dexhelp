@@ -17,16 +17,16 @@ TRADE_MODE = "HIT_AND_RUN"
 # --- STRATEGY SCORING THRESHOLD ---
 # Skor minimal yang dikeluarkan oleh engine predator_score
 # BERSADARKAN SUPER_BACKTEST: 80 (Karena kita berburu koin baru tanpa sosmed).
-MIN_ENTRY_SCORE = 85  # RAISED: To enforce elite signal integrity after repeated failure of lower-score entries which were hunted by anti-sniper mechanics
+MIN_ENTRY_SCORE = 88  # RAISED AGAIN: After repeated SL hits, demand near-perfect signal quality to avoid anti-sniper traps
 
 # --- DYNAMIC HIGH-FREQUENCY FILTERS (V26 OPTIMIZED) ---
 # Filter untuk mengambil koin baru di detik-detik awal peluncuran:
-MAX_AGE_MINUTES = 0.7  # TIGHTENED: To enter before public snipers detect — targeting 42s mark to be first real buyer post-dev
-MIN_LIQ = 90000        # RAISED: Ensures deep enough liquidity to survive initial dump and attract momentum buyers
-MAX_LIQ = 220000       # Slightly tightened to avoid overly mature launches
-MIN_MCAP = 3000        # RAISED: Filters out extremely low-cap traps that lack organic momentum
-MIN_VOL_5M = 110000    # RAISED: Confirms strong buy pressure within first minute
-MIN_TRADES_5M = 40     # RAISED: Validates crowd consensus — high trader count reduces single-wallet manipulation risk
+MAX_AGE_MINUTES = 1.2  # LOOSEN: Avoid zero-minute wash-trade honeypots; wait 72 seconds for organic volume confirmation
+MIN_LIQ = 120000       # RAISED: Stronger liquidity barrier to filter out shallow pools prone to instant dumps
+MAX_LIQ = 250000       # Slightly raised to allow slightly larger but still early-stage launches
+MIN_MCAP = 4000        # RAISED: Further filter out noise and dust caps with fake momentum
+MIN_VOL_5M = 85000     # LOWERED: Accept lower volume if age is slightly higher — prioritize organic over hype
+MIN_TRADES_5M = 35     # Slight loosen to maintain trade flow without sacrificing consensus
 
 # Apakah wajib ada link Twitter/Website/Telegram di DexScreener?
 # BERSADARKAN HASIL SIMULASI: FALSE (Karena 80% koin pemenang awal tidak memiliki link sosial!)
