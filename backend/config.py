@@ -12,21 +12,21 @@
 #   MOONSHOT        (WR 50% PnL +26%)
 #   SCALPER         (WR 75% PnL +4.7%)
 #   HOLY_GRAIL_75WR (WR 75-80% PnL +15%) -> Mode agresif TP awal 50%
-TRADE_MODE = "HIT_AND_RUN"
+TRADE_MODE = "SCALPER"  # Shift to SCALPER: Capture momentum waves missed by rigid HIT_AND_RUN; use 25% TP to exit before second-leg dump
 
 # --- STRATEGY SCORING THRESHOLD ---
 # Skor minimal yang dikeluarkan oleh engine predator_score
 # BERSADARKAN SUPER_BACKTEST: 80 (Karena kita berburu koin baru tanpa sosmed).
-MIN_ENTRY_SCORE = 88  # RAISED AGAIN: After repeated SL hits, demand near-perfect signal quality to avoid anti-sniper traps
+MIN_ENTRY_SCORE = 83  # Lowered: Previous high score requirement filtered out viable entries; allow strong signals with slight variance
 
 # --- DYNAMIC HIGH-FREQUENCY FILTERS (V26 OPTIMIZED) ---
 # Filter untuk mengambil koin baru di detik-detik awal peluncuran:
-MAX_AGE_MINUTES = 1.2  # LOOSEN: Avoid zero-minute wash-trade honeypots; wait 72 seconds for organic volume confirmation
-MIN_LIQ = 120000       # RAISED: Stronger liquidity barrier to filter out shallow pools prone to instant dumps
-MAX_LIQ = 250000       # Slightly raised to allow slightly larger but still early-stage launches
-MIN_MCAP = 4000        # RAISED: Further filter out noise and dust caps with fake momentum
-MIN_VOL_5M = 85000     # LOWERED: Accept lower volume if age is slightly higher — prioritize organic over hype
-MIN_TRADES_5M = 35     # Slight loosen to maintain trade flow without sacrificing consensus
+MAX_AGE_MINUTES = 5.0  # MAJOR LOOSEN: Per DEGEN WISDOM — buying at <2min with high volume leads to honeypots. Wait 5+ mins for dust to settle, volume to stabilize organically
+MIN_LIQ = 80000        # Lowered: Allow earlier participation in genuine low-liquidity pumps that grow organically
+MAX_LIQ = 300000       # Raised: Permit slightly larger plays post-consolidation, targeting momentum continuation
+MIN_MCAP = 3000        # Slight loosen: Maintain sensitivity to early caps with real traction
+MIN_VOL_5M = 60000     # Reduced: Focus on organic volume buildup, not artificial hype walls
+MIN_TRADES_5M = 30     # Slight loosen: Ensure sufficient trader consensus without overfitting to noise
 
 # Apakah wajib ada link Twitter/Website/Telegram di DexScreener?
 # BERSADARKAN HASIL SIMULASI: FALSE (Karena 80% koin pemenang awal tidak memiliki link sosial!)
