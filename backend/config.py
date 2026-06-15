@@ -12,20 +12,20 @@
 #   MOONSHOT        (WR 50% PnL +26%)
 #   SCALPER         (WR 75% PnL +4.7%)
 #   HOLY_GRAIL_75WR (WR 75-80% PnL +15%) -> Mode agresif TP awal 50%
-TRADE_MODE = "HIT_AND_RUN"  # Switch to HIT_AND_RUN: Enforce discipline with 20% TP to avoid overstay in manipulated pumps post-consolidation; adapt to reduced volatility window
+TRADE_MODE = "HIT_AND_RUN"  # Cycle 17: Wider SL (15%) absorbs memecoin volatility; higher TP (25%) captures stronger momentum; tighter entry filters reduce trap exposure
 
 # --- STRATEGY SCORING THRESHOLD ---
 # Skor minimal yang dikeluarkan oleh engine predator_score
 # BERSADARKAN SUPER_BACKTEST: 80 (Karena kita berburu koin baru tanpa sosmed).
-MIN_ENTRY_SCORE = 79  # Further loosen: Increase signal count without sacrificing quality; capture early organic flow missed by overfiltered prior cycle
+MIN_ENTRY_SCORE = 85  # Tighten: Previous 79 score allowed weak setups that hit SL immediately; require stronger conviction signals after 2 consecutive losses
 
 # --- DYNAMIC HIGH-FREQUENCY FILTERS (V26 OPTIMIZED) ---
 # Filter untuk mengambil koin baru di detik-detik awal peluncuran:
-MAX_AGE_MINUTES = 6.0  # MAJOR LOOSEN: Per DEGEN WISDOM — buying at <2min with high volume leads to honeypots. Wait 5+ mins for dust to settle, volume to stabilize organically
-MIN_LIQ = 75000        # Lowered: Allow earlier participation in genuine low-liquidity pumps that grow organically
+MAX_AGE_MINUTES = 4.0  # ADAPT: 6min window catches second-wave dumps; enter 2-4min window where organic momentum establishes before consolidation trap phase
+MIN_LIQ = 120000       # Raised: After 2 SL hits, require stronger liquidity foundation to reduce slippage and rug risk on entry/exit
 MAX_LIQ = 320000       # Raised: Permit slightly larger plays post-consolidation, targeting momentum continuation
 MIN_MCAP = 3000        # Slight loosen: Maintain sensitivity to early caps with real traction
-MIN_VOL_5M = 48000     # Loosen further: Target coins with authentic but slower volume ramp-up, avoiding honeypot traps from inflated walls
+MIN_VOL_5M = 75000     # Raised: Filter out weak volume coins that lack sustained momentum; require genuine trading interest to avoid instant dumps
 MIN_TRADES_5M = 20     # Loosen: Accept lower trade count threshold to increase entry opportunities in surviving organic pumps
 
 # Apakah wajib ada link Twitter/Website/Telegram di DexScreener?
