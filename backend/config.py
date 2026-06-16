@@ -17,12 +17,12 @@ TRADE_MODE = "HIT_AND_RUN"  # Cycle 18: Aggressive adaptation to pre-consolidati
 # --- STRATEGY SCORING THRESHOLD ---
 # Skor minimal yang dikeluarkan oleh engine predator_score
 # BERSADARKAN SUPER_BACKTEST: 80 (Karena kita berburu koin baru tanpa sosmed).
-MIN_ENTRY_SCORE = 82  # Raised to focus on higher-signal entries post-DeepSeek AI filtering
+MIN_ENTRY_SCORE = 85  # CYCLE_19: Higher threshold to ensure quality entries during post-dump recovery window
 
 # --- DYNAMIC HIGH-FREQUENCY FILTERS (V26 OPTIMIZED) ---
 # Filter untuk mengambil koin baru di detik-detik awal peluncuran:
-MAX_AGE_MINUTES = 2.5  # NEW: Target the sweet spot — after initial wash-trade dump (0-90s) but before consolidation traps form (post-4min)
-MIN_LIQ = 8000         # Lowered to detect organic low-liquidity pumps earlier, trusting DeepSeek 'Vibe Check' to filter scams
+MAX_AGE_MINUTES = 5.0  # CYCLE_19: Let initial sniper dump complete, enter during organic recovery phase (4-6min window)
+MIN_LIQ = 15000        # CYCLE_19: Slight raise to avoid extreme slippage on micro-cap launches during recovery phase
 MAX_LIQ = 200000       # Slightly reduced to avoid bloated launch pools
 MIN_MCAP = 5000        # Slight raise to avoid lowest-cap noise
 MIN_VOL_5M = 8000      # Reduced significantly — trust DeepSeek semantic analysis over volume heuristics to avoid honeypots
