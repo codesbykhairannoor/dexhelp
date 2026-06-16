@@ -337,17 +337,22 @@ AVAILABLE FILES: {file_list}
 RULES & CAPABILITIES:
 1. "time_bomb_mins", "sl_pct", "tp_pct" MUST be updated via the JSON fields below. Do NOT edit .py files for these.
 2. You have FULL AUTHORITY to edit `config.py` to adapt to the market. For example, if trades are losing, you can increase `MIN_ENTRY_SCORE` or `MIN_LIQ` to be more selective. If trades are too few, you can lower them.
-3. To edit `config.py`, provide the EXACT `old_snippet` as it appears in the code above, and your `new_snippet`.
-4. You may create new .py modules if you invent a new strategy component.
-5. CRITICAL: Read the LAB JOURNAL. If your previous hypothesis failed or was repeated, DO NOT repeat it. Invent a COMPLETELY NEW hypothesis and try editing different parameters.
-6. CRITICAL: If Trades=0, your filters are TOO STRICT. You MUST loosen MIN_ENTRY_SCORE, MIN_VOL_5M, or MAX_AGE_MINUTES to get trades!
-7. DEGEN WISDOM (ANTI-RUG): In Solana memecoins, setting MAX_AGE_MINUTES < 2 combined with high MIN_VOL_5M (> $10k) guarantees you will buy wash-traded honeypots that instantly dump (extreme slippage). To avoid instant slippage, either loosen MIN_VOL_5M to find organic low-volume coins early, OR increase MAX_AGE_MINUTES > 5 to let the dust settle before buying high volume. Stop tightening volume on 0-minute coins!
-8. Available actions: "read_file", "search_web", "commit_changes".
-8. If you want to read a file, return: {{"action": "read_file", "file": "filename.py"}}
-8. If you want to research the market, return: {{"action": "search_web", "query": "solana memecoin meta today"}}
-9. If you are ready to apply changes and finish the cycle, return: {{"action": "commit_changes", "apply_new_params": true, "tp_pct": 20.0, "sl_pct": 15.0, "time_bomb_mins": 1.0, "file_edits": [], "new_files": [], "hypothesis": "Explain your logic"}}
-10. When committing file edits, you MUST provide the filename: {{"file": "config.py", "old_snippet": "exact old", "new_snippet": "exact new"}}
-11. You MUST write a unique `hypothesis` when you commit changes so you can review it in the next cycle's LAB JOURNAL.
+3. ABSOLUTE SYSTEM LIMITS (DO NOT EXCEED OR BOT WILL DIE): 
+   - MIN_ENTRY_SCORE MUST NEVER exceed 80.
+   - MIN_VOL_5M MUST NEVER exceed 25000.
+   - MIN_LIQ MUST NEVER exceed 25000.
+   - MAX_AGE_MINUTES MUST NEVER be less than 1.0.
+4. To edit `config.py`, provide the EXACT `old_snippet` as it appears in the code above, and your `new_snippet`.
+5. You may create new .py modules if you invent a new strategy component.
+6. CRITICAL: Read the LAB JOURNAL. If your previous hypothesis failed or was repeated, DO NOT repeat it. Invent a COMPLETELY NEW hypothesis and try editing different parameters.
+7. CRITICAL: If Trades=0, your filters are TOO STRICT. You MUST loosen MIN_ENTRY_SCORE, MIN_VOL_5M, or MAX_AGE_MINUTES to get trades!
+8. DEGEN WISDOM (ANTI-RUG): In Solana memecoins, setting MAX_AGE_MINUTES < 2 combined with high MIN_VOL_5M (> $10k) guarantees you will buy wash-traded honeypots that instantly dump (extreme slippage). To avoid instant slippage, either loosen MIN_VOL_5M to find organic low-volume coins early, OR increase MAX_AGE_MINUTES > 5 to let the dust settle before buying high volume. Stop tightening volume on 0-minute coins!
+9. Available actions: "read_file", "search_web", "commit_changes".
+10. If you want to read a file, return: {{"action": "read_file", "file": "filename.py"}}
+11. If you want to research the market, return: {{"action": "search_web", "query": "solana memecoin meta today"}}
+12. If you are ready to apply changes and finish the cycle, return: {{"action": "commit_changes", "apply_new_params": true, "tp_pct": 20.0, "sl_pct": 15.0, "time_bomb_mins": 1.0, "file_edits": [], "new_files": [], "hypothesis": "Explain your logic"}}
+13. When committing file edits, you MUST provide the filename: {{"file": "config.py", "old_snippet": "exact old", "new_snippet": "exact new"}}
+14. You MUST write a unique `hypothesis` when you commit changes so you can review it in the next cycle's LAB JOURNAL.
 
 Return STRICT JSON:"""
 

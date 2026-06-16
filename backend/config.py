@@ -17,16 +17,16 @@ TRADE_MODE = "HIT_AND_RUN"  # Cycle 17: Wider SL (15%) absorbs memecoin volatili
 # --- STRATEGY SCORING THRESHOLD ---
 # Skor minimal yang dikeluarkan oleh engine predator_score
 # BERSADARKAN SUPER_BACKTEST: 80 (Karena kita berburu koin baru tanpa sosmed).
-MIN_ENTRY_SCORE = 85  # Tighten: Previous 79 score allowed weak setups that hit SL immediately; require stronger conviction signals after 2 consecutive losses
+MIN_ENTRY_SCORE = 75  # RESET: Turunkan agar bot bisa menemukan trade
 
 # --- DYNAMIC HIGH-FREQUENCY FILTERS (V26 OPTIMIZED) ---
 # Filter untuk mengambil koin baru di detik-detik awal peluncuran:
-MAX_AGE_MINUTES = 4.0  # ADAPT: 6min window catches second-wave dumps; enter 2-4min window where organic momentum establishes before consolidation trap phase
-MIN_LIQ = 120000       # Raised: After 2 SL hits, require stronger liquidity foundation to reduce slippage and rug risk on entry/exit
-MAX_LIQ = 320000       # Raised: Permit slightly larger plays post-consolidation, targeting momentum continuation
-MIN_MCAP = 3000        # Slight loosen: Maintain sensitivity to early caps with real traction
-MIN_VOL_5M = 75000     # Raised: Filter out weak volume coins that lack sustained momentum; require genuine trading interest to avoid instant dumps
-MIN_TRADES_5M = 20     # Loosen: Accept lower trade count threshold to increase entry opportunities in surviving organic pumps
+MAX_AGE_MINUTES = 4.0  # RESET: Berikan waktu lebih panjang agar koin organik bisa bernafas
+MIN_LIQ = 10000        # RESET: Kembalikan ke angka normal untuk memancing koin baru
+MAX_LIQ = 250000       # Slightly raised to allow slightly larger but still early-stage launches
+MIN_MCAP = 4000        # RAISED: Further filter out noise and dust caps with fake momentum
+MIN_VOL_5M = 15000     # RESET: Volume yang sangat realistis untuk koin berusia 4 menit
+MIN_TRADES_5M = 30     # Reset ke standar normal
 
 # Apakah wajib ada link Twitter/Website/Telegram di DexScreener?
 # BERSADARKAN HASIL SIMULASI: FALSE (Karena 80% koin pemenang awal tidak memiliki link sosial!)
