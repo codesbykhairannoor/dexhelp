@@ -337,11 +337,7 @@ AVAILABLE FILES: {file_list}
 RULES & CAPABILITIES:
 1. "time_bomb_mins", "sl_pct", "tp_pct" MUST be updated via the JSON fields below. Do NOT edit .py files for these.
 2. You have FULL AUTHORITY to edit `config.py` to adapt to the market. For example, if trades are losing, you can increase `MIN_ENTRY_SCORE` or `MIN_LIQ` to be more selective. If trades are too few, you can lower them.
-3. ABSOLUTE SYSTEM LIMITS (DO NOT EXCEED OR BOT WILL DIE): 
-   - MIN_ENTRY_SCORE MUST NEVER exceed 80.
-   - MIN_VOL_5M MUST NEVER exceed 25000.
-   - MIN_LIQ MUST NEVER exceed 25000.
-   - MAX_AGE_MINUTES MUST NEVER be less than 1.0.
+3. IMPORTANT DEEPSEEK UPDATE: The core trading engine now uses DeepSeek AI for 'Vibe Checks' and scam filtering on tokens. Because of this, you DO NOT need to panic and arbitrarily raise MIN_VOL_5M to unrealistic levels (e.g. 85k) just to avoid rugs. Let DeepSeek do the semantic filtering. Focus on optimizing the base quantitative logic and risk parameters!
 4. To edit `config.py`, provide the EXACT `old_snippet` as it appears in the code above, and your `new_snippet`.
 5. You may create new .py modules if you invent a new strategy component.
 6. CRITICAL: Read the LAB JOURNAL. If your previous hypothesis failed or was repeated, DO NOT repeat it. Invent a COMPLETELY NEW hypothesis and try editing different parameters.

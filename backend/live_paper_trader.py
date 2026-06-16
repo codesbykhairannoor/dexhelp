@@ -626,7 +626,26 @@ def run_live_paper_trader():
                         
                         from config import MIN_ENTRY_SCORE
                         min_entry_score = MIN_ENTRY_SCORE
-                        if security["status"] in ["CLEAN & SAFE", "WARNINGS"] and score >= min_entry_score:
+                        
+                        is_approved = False
+                        if security["status"] in ["CLEAN & SAFE", "WARNINGS"]:
+                            if score >= min_entry_score:
+                                print(f"  [QUANTITATIVE PASS] Score {score} >= {min_entry_score}. Instan approve.")
+                                is_approved = True
+                            elif score >= (min_entry_score - 20): # Relaxed threshold
+                                print(f"  [DEEPSEEK CHECK] Score {score} hampir lolos. Meminta Vibe Check DeepSeek untuk {gem['symbol']}...")
+                                try:
+                                    from deepseek_ai import evaluate_token
+                                    ds_res = evaluate_token(gem['symbol'], gem['name'])
+                                    if "error" not in ds_res and ds_res.get("score", 0) >= 80:
+                                        print(f"  [DEEPSEEK APPROVED] Skor: {ds_res['score']}/100. Alasan: {ds_res['reason']}")
+                                        is_approved = True
+                                    else:
+                                        print(f"  [DEEPSEEK REJECTED] Gagal Vibe Check: {ds_res.get('reason', ds_res.get('error'))}")
+                                except Exception as e:
+                                    print(f"  [DEEPSEEK ERROR] Gagal: {e}")
+
+                        if is_approved:
                             # --- AI FILTER REMOVED (OPSI C: Full On-Chain Speed) ---
                             # Bot no longer waits for AI to prevent Top-Buying Trap
                                 
