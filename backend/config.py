@@ -12,21 +12,21 @@
 #   MOONSHOT        (WR 50% PnL +26%)
 #   SCALPER         (WR 75% PnL +4.7%)
 #   HOLY_GRAIL_75WR (WR 75-80% PnL +15%) -> Mode agresif TP awal 50%
-TRADE_MODE = "HIT_AND_RUN"  # Cycle 18: Aggressive adaptation to pre-consolidation momentum capture with ultra-fast time bomb and tighter SL to exploit micro-windows before sniper dumps
+TRADE_MODE = "HIT_AND_RUN"  # Cycle 20: Adaptive strike on post-sniper volatility compression - entering at 3.5-4.5min after fakeout washout, using AI-vetted low-volume signals with moderate SL and timed precision exit
 
 # --- STRATEGY SCORING THRESHOLD ---
 # Skor minimal yang dikeluarkan oleh engine predator_score
 # BERSADARKAN SUPER_BACKTEST: 80 (Karena kita berburu koin baru tanpa sosmed).
-MIN_ENTRY_SCORE = 85  # CYCLE_19: Higher threshold to ensure quality entries during post-dump recovery window
+MIN_ENTRY_SCORE = 82  # CYCLE_20: Slight relaxation to increase trade flow after zero-win cycle; DeepSeek AI now handles scam filtering
 
 # --- DYNAMIC HIGH-FREQUENCY FILTERS (V26 OPTIMIZED) ---
 # Filter untuk mengambil koin baru di detik-detik awal peluncuran:
-MAX_AGE_MINUTES = 5.0  # CYCLE_19: Let initial sniper dump complete, enter during organic recovery phase (4-6min window)
-MIN_LIQ = 15000        # CYCLE_19: Slight raise to avoid extreme slippage on micro-cap launches during recovery phase
-MAX_LIQ = 200000       # Slightly reduced to avoid bloated launch pools
-MIN_MCAP = 5000        # Slight raise to avoid lowest-cap noise
-MIN_VOL_5M = 8000      # Reduced significantly — trust DeepSeek semantic analysis over volume heuristics to avoid honeypots
-MIN_TRADES_5M = 20     # Loosened to allow faster entry on emerging consensus
+MAX_AGE_MINUTES = 4.5  # CYCLE_20: Optimized entry window — after initial dump (2.5min) but before full consolidation (5min), targets compression breakout
+MIN_LIQ = 12000        # CYCLE_20: Lowered slightly to capture organic low-liquidity movers that pass AI 'Vibe Check'
+MAX_LIQ = 180000       # Tightened to avoid pools with artificial liquidity inflation
+MIN_MCAP = 4000        # Lowered to access earlier-stage plays with higher upside potential
+MIN_VOL_5M = 6000      # Further reduced — confidence in DeepSeek prevents rug risk, enabling early detection of non-wash trades
+MIN_TRADES_5M = 25      # Slightly raised to confirm emerging organic interest without relying on volume
 
 # Apakah wajib ada link Twitter/Website/Telegram di DexScreener?
 # BERSADARKAN HASIL SIMULASI: FALSE (Karena 80% koin pemenang awal tidak memiliki link sosial!)
