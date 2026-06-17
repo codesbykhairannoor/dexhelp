@@ -17,16 +17,16 @@ TRADE_MODE = "HIT_AND_RUN"  # Cycle 21: Post-volatility stabilization entry - en
 # --- STRATEGY SCORING THRESHOLD ---
 # Skor minimal yang dikeluarkan oleh engine predator_score
 # BERSADARKAN SUPER_BACKTEST: 80 (Karena kita berburu koin baru tanpa sosmed).
-MIN_ENTRY_SCORE = 85  # CYCLE_21: Increased selectivity after consecutive SL hits - only highest conviction AI-vetted signals with strong Vibe Check scores
+MIN_ENTRY_SCORE = 60  # EXTREME LOOSE: Dijamin memicu trade
 
 # --- DYNAMIC HIGH-FREQUENCY FILTERS (V26 OPTIMIZED) ---
 # Filter untuk mengambil koin baru di detik-detik awal peluncuran:
-MAX_AGE_MINUTES = 6.0  # CYCLE_21: Extended entry window to 5-6min - allows initial sniper dump to fully complete and organic accumulation to establish before entry
-MIN_LIQ = 15000        # CYCLE_21: Raised slightly for better price stability - reduces slippage risk on entry/exit during volatile wicks
-MAX_LIQ = 180000       # Tightened to avoid pools with artificial liquidity inflation
-MIN_MCAP = 4000        # Lowered to access earlier-stage plays with higher upside potential
-MIN_VOL_5M = 8000      # CYCLE_21: Moderate increase - ensures sufficient organic activity without relying solely on AI filtering for volume validation
-MIN_TRADES_5M = 25      # Slightly raised to confirm emerging organic interest without relying on volume
+MAX_AGE_MINUTES = 5.0  # Waktu sangat santai untuk koin terdeteksi
+MIN_LIQ = 5000         # Likuiditas minimalis (koin kecil bisa masuk)
+MAX_LIQ = 500000       # Biarkan koin raksasa masuk jika ada
+MIN_MCAP = 2000        # Tidak peduli mcap kecil
+MIN_VOL_5M = 5000      # Volume lantai dasar (sangat mudah dicapai)
+MIN_TRADES_5M = 15     # Hanya butuh sedikit pembeli
 
 # Apakah wajib ada link Twitter/Website/Telegram di DexScreener?
 # BERSADARKAN HASIL SIMULASI: FALSE (Karena 80% koin pemenang awal tidak memiliki link sosial!)
