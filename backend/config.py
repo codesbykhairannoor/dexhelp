@@ -12,7 +12,7 @@
 #   MOONSHOT        (WR 50% PnL +26%)
 #   SCALPER         (WR 75% PnL +4.7%)
 #   HOLY_GRAIL_75WR (WR 75-80% PnL +15%) -> Mode agresif TP awal 50%
-TRADE_MODE = "HIT_AND_RUN"  # Cycle 21: Post-volatility stabilization entry - entering at 5.0-6.0min after initial dump settles, using wider SL (18%) to survive normal wicks and extended time bomb (2.5min) for momentum confirmation
+TRADE_MODE = "OPTIMIZED"  # HOLY GRAIL: Takes 80% profit at +30% to lock gains, lets 20% run
 
 # --- STRATEGY SCORING THRESHOLD ---
 # Skor minimal yang dikeluarkan oleh engine predator_score
