@@ -406,46 +406,47 @@ def run_live_paper_trader():
                                 sl_price = highest_price * 0.80 # 20% Initial SL
                                 trail_level = "TRAILING SL (20%)"
                         elif trade_mode == "OPTIMIZED":
-                            # OPTIMIZED HOLY GRAIL V17.0 (Scalp & Runner) - The True Holy Grail
-                            if not pos.get("partial_tp_hit", False) and price_gain_pct >= 30.0:
-                                partial_qty = pos["qty"] * 0.80
+                            # OPTIMIZED HOLY GRAIL V18.0 - "DIAMOND HANDS" 
+                            # Cuan Ratusan Persen Strategy:
+                            # 1. Take 50% profit at +100% (Gets initial capital back)
+                            # 2. Let the other 50% run for massive gains
+                            # 3. Use 35% wide SL to avoid getting shaken out
+                            if not pos.get("partial_tp_hit", False) and price_gain_pct >= 100.0:
+                                partial_qty = pos["qty"] * 0.50
                                 partial_val = partial_qty * current_price
                                 portfolio["wallet_balance"] += partial_val
-                                print(f"\n✨ [SCALP TP] Jual 80% {pos['symbol']} @ ${current_price:.8f} (+{price_gain_pct:.2f}%)! Mengunci Modal & Profit.", flush=True)
+                                print(f"\n✨ [100% PUMP TP] Jual 50% {pos['symbol']} @ ${current_price:.8f} (+{price_gain_pct:.2f}%)! Modal Kembali 100%.", flush=True)
                                 
                                 orig_gross = pos.get("original_gross_investment", pos.get("gross_investment", pos["net_investment"]))
-                                partial_pnl = partial_val - (0.80 * orig_gross)
+                                partial_pnl = partial_val - (0.50 * orig_gross)
                                 pos["total_pnl_usd"] = pos.get("total_pnl_usd", 0.0) + partial_pnl
                                 
-                                pos["qty"] *= 0.20
+                                pos["qty"] *= 0.50
                                 pos["partial_tp_hit"] = True
-                                pos["remaining_pct"] = 0.20
+                                pos["remaining_pct"] = 0.50
                                 if "gross_investment" in pos:
-                                    pos["gross_investment"] *= 0.20
-                                pos["net_investment"] *= 0.20
+                                    pos["gross_investment"] *= 0.50
+                                pos["net_investment"] *= 0.50
                                 closed_any = True
                                 
                             if pos.get("partial_tp_hit", False):
-                                # 20% MOONSHOT RUNNER LOGIC (Free bag)
-                                if price_gain_pct >= 300.0:
+                                # 50% MOONSHOT RUNNER LOGIC (Free bag)
+                                if price_gain_pct >= 500.0:
+                                    sl_price = highest_price * 0.65
+                                    trail_level = "RUNNER TSL (35%)"
+                                elif price_gain_pct >= 200.0:
                                     sl_price = highest_price * 0.70
                                     trail_level = "RUNNER TSL (30%)"
-                                elif price_gain_pct >= 150.0:
-                                    sl_price = highest_price * 0.80
-                                    trail_level = "RUNNER TSL (20%)"
-                                elif price_gain_pct >= 80.0:
+                                else:
                                     sl_price = entry_price * 1.50
-                                    trail_level = "RUNNER LOCK (+50%)"
-                                else:
-                                    sl_price = entry_price * 1.03
-                                    trail_level = "RUNNER BE-LOCK (+3%)"
+                                    trail_level = "RUNNER BE-LOCK (+50%)"
                             else:
-                                if price_gain_pct >= 10.0:
-                                    sl_price = entry_price * 1.03
-                                    trail_level = "BE-LOCK (+3%)"
+                                if price_gain_pct >= 50.0:
+                                    sl_price = entry_price * 1.10
+                                    trail_level = "BE-LOCK (+10%)"
                                 else:
-                                    sl_price = highest_price * 0.85
-                                    trail_level = "OPTIMIZED TIGHT SL (15%)"
+                                    sl_price = highest_price * 0.65
+                                    trail_level = "DIAMOND HANDS WIDE SL (35%)"
                         elif dyn_mode == "HIT_AND_RUN":
                             dyn_tp = dyn_params.get("tp_pct", 20.0)
                             dyn_sl = dyn_params.get("sl_pct", 15.0)
