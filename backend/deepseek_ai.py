@@ -1,7 +1,7 @@
 import os, time, requests, json
 
 def get_api_key():
-    key = os.getenv("DEEPSEEK_API_KEY")
+    key = os.getenv("QWEN_API_KEY")
     if key: return key
     
     # Check backend/.env first
@@ -9,7 +9,7 @@ def get_api_key():
     if os.path.exists(env_path):
         with open(env_path, 'r') as f:
             for line in f:
-                if 'DEEPSEEK_API_KEY' in line and not line.startswith('#'):
+                if 'QWEN_API_KEY' in line and not line.startswith('#'):
                     val = line.split('=')[-1].strip().strip('"').strip("'")
                     if val: return val
                     
@@ -18,14 +18,14 @@ def get_api_key():
     if os.path.exists(root_env):
         with open(root_env, 'r') as f:
             for line in f:
-                if 'DEEPSEEK_API_KEY' in line and not line.startswith('#'):
+                if 'QWEN_API_KEY' in line and not line.startswith('#'):
                     return line.split('=')[-1].strip().strip('"').strip("'")
     return None
 
 def evaluate_token(symbol, name):
     api_key = get_api_key()
     if not api_key:
-        return {"error": "No API key found"}
+        return {"error": "No QWEN_API_KEY found"}
         
     start_time = time.time()
     
@@ -46,19 +46,17 @@ Format: {{"score": <1-100 integer>, "reason": "<brief 1 sentence reason>"}}
     }
     
     payload = {
-        "model": "deepseek-v4-pro",
+        "model": "qwen-turbo",
         "messages": [
             {"role": "system", "content": "You are a hyper-intelligent degen memecoin sniper algorithm."},
             {"role": "user", "content": prompt}
         ],
-        "thinking": {"type": "enabled"},
-        "reasoning_effort": "high",
         "response_format": {"type": "json_object"},
         "stream": False
     }
     
     try:
-        r = requests.post("https://api.deepseek.com/chat/completions", headers=headers, json=payload, timeout=45)
+        r = requests.post("https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions", headers=headers, json=payload, timeout=45)
         latency = time.time() - start_time
         
         if r.status_code == 200:

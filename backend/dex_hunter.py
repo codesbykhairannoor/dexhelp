@@ -356,10 +356,10 @@ def calculate_gem_score(pair_data: dict, security: dict) -> int:
     if pair_data.get("zero_minute_snipe"):
         # Zero-minute snipes bypass the young age penalty because they undergo strict social & volume checks
         pass
-    elif 300 <= age_sec <= 10800:   # Sweet spot: 5 min - 3 hours (early entry allowed since security is mandatory)
+    elif 300 <= age_sec <= 10800:   # Sweet spot: 5 min - 3 hours
         score += 20
-    elif age_sec < 300:           # < 5 minutes: dangerously early
-        score -= 40
+    elif age_sec < 300:           # < 5 minutes: Early sniper window (No penalty anymore because we rely on DIAMOND HANDS)
+        score += 10 # Slight boost for being very early
     elif age_sec > 43200:         # > 12 hours: momentum likely exhausted
         score -= 20
 
