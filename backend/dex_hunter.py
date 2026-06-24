@@ -364,24 +364,30 @@ def calculate_gem_score(pair_data: dict, security: dict) -> int:
         score -= 20
 
     # NEW SIGNAL 2: Volume Acceleration (Is momentum GROWING right now?)
-    # Compare h1 volume vs the average hourly volume from h24 baseline
+    # RESEARCH: Vol acceleration >1.5x = smart money entering; >3x = breakout wave
     vol_1h = float(pair_data.get("volume_1h", 0) or 0)
     vol_24h = float(pair_data.get("volume_24h", 0) or 0)
     if vol_24h > 0:
         baseline_hourly = vol_24h / 24.0
         vol_accel = vol_1h / baseline_hourly if baseline_hourly > 0 else 1.0
-        if vol_accel > 3.0:
-            score += 15  # Volume 3x baseline = momentum explosion!
+        if vol_accel > 10.0:
+            score += 25  # EXPLOSIVE: Volume 10x baseline = massive breakout!
+        elif vol_accel > 5.0:
+            score += 20  # Volume 5x = strong momentum wave
+        elif vol_accel > 3.0:
+            score += 15  # Volume 3x = momentum building
         elif vol_accel > 1.5:
-            score += 8   # Volume above average = healthy uptrend
+            score += 8   # Volume above average = healthy trend
         elif vol_accel < 0.5:
-            score -= 10  # Volume drying up = trend is dying
+            score -= 10  # Volume drying up = trend dying
 
-    # V15.0 5-Minute Volume Surge check (Micro-breakout sensor)
+    # V19.0 5-Minute Volume Surge check (Micro-breakout sensor)
     vol_5m = float(pair_data.get("volume_5m", 0) or 0)
-    avg_5m_vol = vol_1h / 12.0
+    avg_5m_vol = vol_1h / 12.0 if vol_1h > 0 else 1.0
     vol_surge_5m = vol_5m / avg_5m_vol if avg_5m_vol > 0 else 1.0
-    if vol_surge_5m >= 2.5:
+    if vol_surge_5m >= 5.0:
+        score += 20  # Extreme 5m surge = catching a wave!
+    elif vol_surge_5m >= 2.5:
         score += 15  # Strong micro volume surge
     elif vol_surge_5m < 0.8:
         score -= 15  # Volume stalling/dry-up
@@ -415,29 +421,38 @@ def calculate_gem_score(pair_data: dict, security: dict) -> int:
         elif liq_ratio < 0.05: score -= 25 # High slippage risk
 
     # 3. Buy/Sell Volume Momentum & Exhaustion Guard (5 Minutes)
+    # RESEARCH: Buy ratio >= 97% is a "step-function" inflection point signaling seller exhaustion
     tx_5m = pair_data.get("txns", {}).get("m5", {})
     buys = int(tx_5m.get("buys", 0))
     sells = int(tx_5m.get("sells", 0))
     total_tx = buys + sells
     
-    if total_tx > 80: score += 15
+    if total_tx > 100: score += 20  # Ultra-high activity
+    elif total_tx > 80: score += 15
     elif total_tx > 30: score += 8
+    
+    # RESEARCH: Buy/Sell ratio is the single strongest momentum predictor
+    # >= 97% buys = seller exhaustion = parabolic move imminent
+    buy_ratio = buys / total_tx if total_tx > 0 else 0.5
+    if buy_ratio >= 0.97:
+        score += 25  # CRITICAL: Seller exhaustion signal - parabolic potential!
+    elif buy_ratio >= 0.85:
+        score += 15  # Very strong buying pressure
+    elif buy_ratio >= 0.70:
+        score += 8   # Healthy buying pressure
+    elif buy_ratio < 0.40:
+        score -= 20  # Heavy selling - distribution trap!
     
     p5m = float(pair_data.get("price_change_5m", 0) or 0)
     
     # A. Whale Distribution Guard (Whales exiting on retail buyers)
-    # If the count of buys is way higher than sells (FOMO), but the price is dropping -> classic whale distribution trap!
-    if sells > 0 and (buys / sells) >= 1.7:
-        if p5m < -1.0:
-            score -= 15 # "Lelah Naik" Trap! Whales are using retail as exit liquidity.
-        else:
-            score += 10 # Healthy buying pressure
+    if buy_ratio >= 0.80 and p5m < -1.0:
+        score -= 20  # "Lelah Naik" Trap! Retail buying but whales dumping price down.
             
     # B. Price-Volume Exhaustion Guard (Fatigue check)
-    # High volume (>15% of liquidity) with flat price action indicates a heavy ceiling block (distribution).
     vol_5m = float(pair_data.get("volume_5m", 0) or 0)
     if liq > 0 and vol_5m > (liq * 0.15) and -2.0 <= p5m <= 2.0:
-        score -= 15 # Price is stalling despite heavy volume. Momentum exhausted!
+        score -= 15  # Price stalling despite heavy volume = ceiling block!
 
     # 4. DexScreener Profile completeness (Social status)
     info = pair_data.get("info", {})

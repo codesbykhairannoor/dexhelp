@@ -631,35 +631,10 @@ def run_live_paper_trader():
                         is_approved = False
                         if security["status"] in ["CLEAN & SAFE", "WARNINGS"]:
                             if score >= min_entry_score:
-                                print(f"  [QUANTITATIVE PASS] Score {score} >= {min_entry_score}. Instan approve.")
+                                print(f"  [✅ QUANTITATIVE PASS] Score {score} >= {min_entry_score}. BOT MENEMBAK!")
                                 is_approved = True
-                            elif score >= 60:
-                                # Try Qwen AI Vibe Check - graceful fallback if API is down
-                                print(f"  [AI CHECK] Score {score} lumayan. Meminta Vibe Check untuk {gem['symbol']}...")
-                                ai_approved = False
-                                ai_available = False
-                                try:
-                                    from deepseek_ai import evaluate_token
-                                    ds_res = evaluate_token(gem['symbol'], gem['name'])
-                                    if "error" not in ds_res:
-                                        ai_available = True
-                                        if ds_res.get("score", 0) >= 75:
-                                            print(f"  [AI APPROVED] Skor: {ds_res['score']}/100. Alasan: {ds_res['reason']}")
-                                            ai_approved = True
-                                        else:
-                                            print(f"  [AI REJECTED] Skor: {ds_res.get('score', 0)}/100 - {ds_res.get('reason', 'Narasi tidak cukup kuat')}")
-                                    else:
-                                        print(f"  [AI UNAVAILABLE] {ds_res.get('error', 'Unknown error')} - Fallback ke Quantitative!")
-                                except Exception as e:
-                                    print(f"  [AI ERROR] {e} - Fallback ke Quantitative!")
-                                
-                                if ai_approved:
-                                    is_approved = True
-                                elif not ai_available:
-                                    # AI is down: approve purely on score >= 65 (slightly higher bar)
-                                    if score >= 65:
-                                        print(f"  [QUANTITATIVE FALLBACK] AI tidak tersedia. Score {score} >= 65. Auto-approve.")
-                                        is_approved = True
+                            else:
+                                print(f"  [❌ DITOLAK] Score {score} < {min_entry_score}. Kurang kuat.")
 
                         if is_approved:
                             # --- MEME MODE (DEEPSEEK + SCALPER) ---
