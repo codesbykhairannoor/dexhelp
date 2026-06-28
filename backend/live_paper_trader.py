@@ -445,8 +445,10 @@ def run_live_paper_trader():
                                     sl_price = entry_price * 1.10
                                     trail_level = "BE-LOCK (+10%)"
                                 else:
-                                    sl_price = highest_price * 0.65
-                                    trail_level = "DIAMOND HANDS WIDE SL (35%)"
+                                    # DATA-PROVEN: 35% was causing -55% losses (TISM, alon, SSS, OPRAH)
+                                    # 20% still allows J-curve recovery while cutting catastrophic losses
+                                    sl_price = highest_price * 0.80
+                                    trail_level = "OPTIMIZED SL (20%)"
                         elif dyn_mode == "HIT_AND_RUN":
                             dyn_tp = dyn_params.get("tp_pct", 20.0)
                             dyn_sl = dyn_params.get("sl_pct", 15.0)

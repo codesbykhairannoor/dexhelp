@@ -17,16 +17,16 @@ TRADE_MODE = "OPTIMIZED"  # HOLY GRAIL: Takes 80% profit at +30% to lock gains, 
 # --- STRATEGY SCORING THRESHOLD ---
 # Skor minimal yang dikeluarkan oleh engine predator_score
 # BERSADARKAN SUPER_BACKTEST: 80 (Karena kita berburu koin baru tanpa sosmed).
-MIN_ENTRY_SCORE = 60  # EXTREME LOOSE: Dijamin memicu trade
+MIN_ENTRY_SCORE = 72  # DATA-DRIVEN: Raised from 60 to stop time-bomb exits (50% of trades were dead on arrival)
 
 # --- DYNAMIC HIGH-FREQUENCY FILTERS (V26 OPTIMIZED) ---
 # Filter untuk mengambil koin baru di detik-detik awal peluncuran:
-MAX_AGE_MINUTES = 5.0  # Waktu sangat santai untuk koin terdeteksi
-MIN_LIQ = 5000         # Likuiditas minimalis (koin kecil bisa masuk)
-MAX_LIQ = 500000       # Biarkan koin raksasa masuk jika ada
-MIN_MCAP = 2000        # Tidak peduli mcap kecil
-MIN_VOL_5M = 5000      # Volume lantai dasar (sangat mudah dicapai)
-MIN_TRADES_5M = 15     # Hanya butuh sedikit pembeli
+MAX_AGE_MINUTES = 5.0
+MIN_LIQ = 8000         # Raised slightly for price stability
+MAX_LIQ = 500000
+MIN_MCAP = 3000
+MIN_VOL_5M = 8000      # Raised: minimum organic volume to avoid dead coins
+MIN_TRADES_5M = 20     # Raised: more buyers = more real momentum
 
 # Apakah wajib ada link Twitter/Website/Telegram di DexScreener?
 # BERSADARKAN HASIL SIMULASI: FALSE (Karena 80% koin pemenang awal tidak memiliki link sosial!)
